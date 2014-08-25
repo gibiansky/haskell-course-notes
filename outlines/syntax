@@ -1,0 +1,35 @@
+Section: Getting Started with Haskell
+- Status of compilers (others exist, but GHC is standard)
+- Very first haskell program:
+    module Main where
+    main = putStrLn "Hello"
+- Small discussion about haskell syntax/language being weird, but worthwhile
+
+Section: The type system
+- What is a type system
+- Will start by getting in your way, will become your friend
+- Type annotations and setting values
+- Note about polymorphic numbers
+
+Section: Values and Functions
+- Top-level values
+- Functions with one argument
+- Functions with multiple arguments
+- Pattern matching on numbers
+
+Section: Declaring and Creating Data Types
+- Creating your first data type
+- Deriving show note
+- Product tupes. comparison to other languages
+- Pattern matching on product types
+- Sum types. comparison to other languages
+- Pattern matching on sum types
+
+Section: Record Syntax
+- Record syntax and motivation for it
+
+Section: Lists
+- Structure of a linked list
+- Pattern matching on lists
+- A few list functions
+- Lazy and infinite lists

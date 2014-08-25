@@ -1,0 +1,1478 @@
+\chapter{Building Abstractions}
+\label{chap:abstraction}
+
+
+\section{What is Abstraction?}
+\label{sec:what-is-abstraction}
+
+A key feature of programming languages is their capability for designing abstractions. Most
+imperative languages support functions, and you may be familiar with a few that support more
+advanced abstractions, such as macros in Lisp or classes in most popular modern languages.
+
+Though languages will have some abstractions as language features, abstractions are occasionally
+encoded as social constructs, often called ``design patterns''.  Although they aren't a fundamental
+part of programming language, things such as factories (common in Java), visitor patterns, thread pools,
+and client-server request-response communication protocols are all design patterns just as much as
+functions or classes.
+
+In mathematics, abstraction takes on a slightly different meaning. Abstract mathematics relies on
+defining simple objects and a few axioms that relate them, and seeing what sort of results these
+axioms yield. (An axiom is simply a fact taken for granted, something that is assumed to be true
+without proof.) For instance, an important mathematical abstraction is the \newterm{group}:
+\begin{definition}
+    A \newterm{group} $G$ is a set (an unordered list of unique items) associated with a binary
+    operation $\cdot$ such that
+    \begin{itemize}
+        \item For all elements $x, y$ in the group $G$, $x \cdot y$ is also an element of $G$.
+        \item For all elements $x, y, z$ in the group $G$, $x \cdot (y \cdot z) = (x \cdot y) \cdot z$.
+        \item There is some element $e$ (called the identity element) in $G$ such that given any $x$
+            in $G$, $e \cdot x = x \cdot e = x$.
+        \item For any $x$ in $G$, there exists some $y$ in $G$ such that $x \cdot y = y \cdot x = e$
+            (where $e$ is the previously mentioned identity element).
+    \end{itemize}
+\end{definition}
+
+Mathematical abstractions have a tendency to be very general, and can be hard to apply to real-world
+scenarios and data. With the example above, how could we use a group structure in our software?
+Without a more concrete application, that abstraction is hard to utilize. On the other hand,
+traditional abstractions in software are straight-forward to apply, but can be hard to analyze
+rigorously. We get very few theoretical guarantees simply by knowing that some class implements the
+visitor pattern.
+
+While the standard style of abstractions can be used in Haskell (and often are), we often prefer to
+use more rigorously defined mathematical abstractions. We represent these abstracts through a
+typeclass along with a set of laws that well-behaved instances must obey. (The language does not
+and cannot verify that the laws are followed, so whenever you write an instance of a typeclass
+with a set of associated laws, it is up to you to verify that the laws hold. The community tends to
+quickly point out invalid instances if they are in published libraries.)
+
+The group abstraction above might be defined as the following typeclass:
+\begin{haskell}
+-- A group has...
+class Group g where
+  -- an identity element,
+  identity :: g
+
+  -- an addition operation,
+  add :: g -> g -> g
+
+  -- and an inverse for each element.
+  inverse :: g -> g
+\end{haskell}
+
+Whenever we wrote an instance for this class, we would want to verify that the following laws hold:
+\begin{haskell}
+-- Our addition is associative.
+forall x y z. x `add` (y `add` z) == (x `add` y) `add` z
+
+-- We have a two-sided identity.
+forall x. identity `add` x == x
+forall x. x `add` identity == x
+
+-- Every element has an inverse.
+forall x. inverse x `add` x == identity
+forall x. x `add` inverse x == identity
+\end{haskell}
+Note that the laws above are \emph{not} valid Haskell, but are just a way to express the laws that
+relate to our \inline{Group} typeclass.
+
+The abstraction of a group turns out not to be very useful in Haskell, so we won't spend any more
+time on it; it's served us well as an example, and is no longer useful to us. Note that although
+that particular abstraction isn't useful, the style in which we defined it (as a typeclass with some
+laws) is common throughout the Haskell ecosystem. With that in mind, let's spend the rest of this
+chapter looking at some useful abstractions that Haskell programmers use every day.
+
+\section{Monoids}
+\label{sec:monoids}
+The first abstraction we'd look to look at is fairly similar to the \inline{Group} example, but
+somewhat more restricted. Like before, we'd like to generalize a notion of \emph{combining}
+different elements using some sort of addition. For instance, we can combine numbers using
+\inline{+} and we can combine lists and \inline{String}s using \inline{++}. However, while numbers
+have inverses (so we could make them a \inline{Group}), there's certainly no notion of an inverse
+for strings or lists. To simplify our life, we can get rid of the requirement for an inverse.
+
+The resulting algebraic structure is called a \newterm{monoid}:
+\begin{definition}
+    A \newterm{monoid} $M$ is a set (in Haskell, a type) associated with a binary
+    operation $\diamond :: M \to M \to M$ such that
+    \begin{itemize}
+        \item For all elements $x, y, z$ in the monoid $M$, $x \diamond (y \diamond z) = (x \diamond y) \diamond z$.
+        \item There is some element $e$ (called the identity element) in $M$ such that given any $x$
+            in $M$, $e \diamond x = x \diamond e = x$.
+    \end{itemize}
+\end{definition}
+Note how similar this definition is to the definition of a group; all we've done is removed one
+requirement! The typeclass looks pretty familiar, too:
+\begin{haskell}
+-- A monoid has...
+class Monoid m where
+  -- an identity element,
+  mempty :: m
+
+  -- and an addition operation.
+  mappend :: m -> m -> m
+\end{haskell}
+
+As usual, this abstraction comes with a set of laws, corresponding to the items in the mathematical
+definition above. We use the operator \inline{<>}, which is just an infix alias for \inline{mappend}.
+\begin{haskell}
+-- Our addition is associative.
+forall x y z. x <> (y <> z) == (x <> y) <> z
+
+-- We have a two-sided identity.
+forall x. mempty <> x == x
+forall x. x <> mempty == x
+\end{haskell}
+
+The value of the monoid abstraction comes from its wide applicability, so let's take a look at some
+examples. The most obvious instance would be one for numbers:
+\begin{haskell}
+-- Numbers form a monoid under addition.
+instance Num a => Monoid a where
+  mempty = 0
+  mappend = (+)
+\end{haskell}
+
+This instance, while tempting, has a number of problems (no pun intended). The main semantic one is
+that that's not the only way to define a monoid over numbers! For example, we could also try to
+define something like this:
+\begin{haskell}
+-- Numbers form a monoid under multiplication as well!
+instance Num a => Monoid a where
+  mempty = 1
+  mappend = (*)
+\end{haskell}
+The other slightly more technical issue with both of the instances above is that they create an
+opportunity to seriously confuse the Haskell type system. If you try to define these instances,
+you'll get an error message complaining about \inline{UndecidableInstances}.
+\begin{tangent}[frametitle=Undecidable Instances]
+By default, GHC requires that all typeclass instances be decidable, meaning that checking whether an
+instance applies is guaranteed to terminate and not create a loop in the type checker. In order to
+guarantee termination, GHC requires that any instance that has a context (such as \inline{Num a =>}
+in our example) obeys the rule:
+
+``Each assertion in the context has fewer \emph{constructors} and \emph{variables} taken together
+than the head.''
+
+Each part of the context is called an assertion --- so the context \inline{(Num a, Show a)} has two
+assertions in it, one for \inline{Num} and one for \inline{Show}, and the rule applies separately to
+each of them. The head is the instance itself, \inline{Monoid a} in our case.
+
+Our instance of the form \inline{Num a => Monoid a} breaks this rule, since the assertion has the
+same number of type variables as the instance head (both have one type variable, \inline{a}).
+
+GHC allows you to disable this by enabling the \inline{UndecidableInstances} extension, but this is
+considered a \emph{very} bad idea. If you enable that extension, you can write code like the
+following:
+\begin{haskell}
+class Class a where
+  f :: a -> a
+instance Class [a] => Class a where
+  f x = x
+\end{haskell}
+When analyzing this code, if you use \inline{f}, GHC will crash (or loop infinitely). For instance,
+suppose you had the expression \inline{f "x"}. Then, GHC would find the instance for \inline{Class
+a}. In order to check that it applied, it would first check that \inline{Class [a]} applied. In
+order to check \emph{that}, it would once more use the \inline{Class a} instance, at which point it
+would have to verify that \inline{Class [[a]]} applied. This would continue indefinitely, leading to
+an infinite loop in the typechecker. 
+
+This is a \emph{bad} idea, so don't enable \inline{UndecidableInstances}.
+\end{tangent}
+
+In order to solve both of these issues, we can wrap the number in a semantically-meaningful \inline{newtype}. 
+We'll create two new types --- one called \inline{Sum} for the monoid under addition, and another
+called \inline{Product} for the monoid under multiplication.
+\begin{haskell}
+-- Numbers form a monoid under addition.
+newtype Sum a = Sum a
+instance Num a => Monoid (Sum a) where
+  mempty = Sum 0
+  mappend (Sum x) (Sum y) = Sum $ x + y
+
+-- Numbers form a monoid under multiplication.
+newtype Product a = Product a
+instance Num a => Monoid (Product a) where
+  mempty = Product 1
+  mappend (Product x) (Product y) = Product $ x * y
+\end{haskell}
+
+With instances like these, we can write a general ``sum'' function to combine a list of monoids.
+\begin{haskell}
+-- Combine a list of monoid elements into one.
+mconcat :: Monoid m => [m] -> m
+mconcat = foldl' mappend mempty
+\end{haskell}
+
+We can use this as a sum or a product by wrapping our values in the \inline{Sum} or \inline{Product}
+constructor:
+\begin{haskell}
+sum :: Num a -> [a] -> a
+sum nums = s
+  where Sum s = mconcat $ map Sum nums
+
+product :: Num a -> [a] -> a
+product nums = p
+  where Product p = mconcat $ map Product nums
+\end{haskell}
+
+The pattern of using \inline{newtype}s to distinguish between monoids is fairly common, because for
+many data types there are multiple ways to interpret them as a monoid. For instance, for the
+\inline{Bool} type we can interpret the binary operation \inline{<>} as either an ``and'' or an ``or'',
+which yield the \inline{All} and \inline{Any} monoids, respectively:
+\begin{haskell}
+newtype All = All Bool
+instance Monoid All where
+  mempty = All True
+  mappend (All x) (All y) = All $ x && y
+
+newtype Any = All Bool
+instance Monoid Any where
+  mempty = Any False
+  mappend (Any x) (All y) = All $ x || y
+\end{haskell}
+The \inline{all} and \inline{any} functions can then be implemented very similarly to the
+\inline{sum} and \inline{product} functions above.
+
+Yet another instance of this pattern (once more, no pun intended) is the \inline{First} and
+\inline{Last} monoids. These extract values from a list of \inline{Maybe} values; as their names may
+suggest, they extract the first \inline{Just} values and the last \inline{Just} values encountered.
+\begin{haskell}
+newtype First a = First (Maybe a)
+newtype Last a = Last (Maybe a)
+\end{haskell}
+The instance implementation is left as an exercise to the reader. In both cases, the identity should
+be \inline{Nothing}. In the \inline{First} case, \inline{mappend} should keep the left-most \inline{Just} result it
+sees, whereas in the \inline{Last} case, it should keep the right-most \inline{Just} result.
+
+Not all monoids fit this \inline{newtype}ing pattern. For example, an incredible useful monoid instance is the
+one for the \inline{Ordering} data type, implemented as follows:
+\begin{haskell}
+-- An ordering, used to compare values.
+-- The Ord typeclass requires a function compare :: a -> a -> Ordering.
+-- Necessary for sorting and other order-dependent operations.
+data Ordering = LT | GT | EQ
+
+-- Allow for lexicographical ordering.
+instance Monoid Ordering where
+  mempty = EQ
+  mappend EQ ord = ord
+  mappend ord _ = ord
+\end{haskell}
+
+This monoid allows us to easily write comparator functions. For instance, suppose we had a type
+representing someone's name:
+\begin{haskell}
+data Name = Name {
+    first :: String,
+    middle :: String,
+    last :: String
+  }
+\end{haskell}
+
+If we wanted to implement an ordering on names that sorted first on last names, then first names,
+then middle names, we could easily implement such an ordering:
+\begin{haskell}
+instance Ord Name where
+  compare name1 name2 =
+    compare (last name1) (last name2) <>
+    compare (first name1) (first name2) <>
+    compare (middle name1) (middle name2)
+\end{haskell}
+Recall that the function \inline{compare :: a -> a -> Ordering} is necessary for implementing the
+\inline{Ord} typeclass, and that we already have an \inline{Ord} implementation (and thus a
+\inline{compare} function) for \inline{String}s.  Using the \inline{String} \inline{compare} and the
+\inline{Monoid} instance for \inline{Ordering}, we can easily write the lexicographic ordering for
+our \inline{Name} data type.
+
+The last monoid we'll look at is the \inline{[a]} monoid.  This instance can be constructed almost
+trivially using the empty list and \inline{++}.  however, this monoid has an interesting property.
+Although it has a somewhat special syntax, \inline{[]} is actually a type constructor (similar to
+\inline{Maybe}). \inline{[]} takes any type \inline{a} and spits out a valid \inline{Monoid}. For
+this reason, the list type \inline{[a]} is referred to as the \newterm{free monoid} --- we get it
+for free for any type \inline{a}, without any extra effort on our part. Although this is fairly
+uninteresting for monoids, we'll see later that other algebraic structures also admit free variants
+which are somewhat harder to derive but can be used with great effect.
+
+\begin{tangent}[frametitle=Semigroups]
+Monoids can be simplified even further to \newterm{semigroups} by removing the requirement for an
+identity element. A semigroup is a set with some associative binary operation on it. This structure
+can be encoded with the class
+\begin{haskell}
+class Semigroup a where
+  (<>) :: a -> a -> a
+\end{haskell}
+
+This class is not used very often in Haskell, but exists in the \inline{semigroups} package, which
+also comes with a few instances for the class.
+\end{tangent}
+
+\subsection*{Finger Trees and Monoids}
+As with many things, mastery and understanding of monoids comes not only in knowing their
+definitions but also in being able to use them in practice. To that end, let's look at a Haskell
+library called \inline{fingertree} which utilizes the monoid abstraction to great effect. (The same
+algorithms and data structures are used in \inline{Data.Sequence} module from the
+\inline{containers} package, which implement fast random-access sequences for Haskell.)
+
+Before looking at finger trees, let's consider a simpler case --- searching for the $n$th element in
+a list. Using standard Haskell lists, this takes $O(n)$ time, since you need to traverse $n - 1$
+elements of the linked list to get to the $n$th element. In order to do this faster, we can
+superimpose a binary tree structure on top of this list:
+\image{abstractions}{fingertree1}
+The terminal nodes store the list elements. The intermediate nodes are annotated with the number of
+children they have. Thus, the top node will be annotated with the length of the list, and every leaf
+will be annotated with the value one.
+
+We could write the example tree above as follows:
+\begin{haskell}
+data Tree a = Branch Int (Tree a) (Tree a) | Leaf Int a
+
+tree :: Tree Char
+tree =
+  Branch 4
+    (Branch 2 (Leaf 1 'A') (Leaf 1 'B'))
+    (Branch 2 (Leaf 1 'C') (Leaf 1 'D'))
+\end{haskell}
+
+If we want to quickly reach the $n$th element in this tree, instead of starting at the beginning of
+the list and traversing forwards, we could start at the top of the tree and look for the place where
+the number of children to our left is greater than $n$. 
+
+For instance, suppose we wanted to access the fourth element. We start at the top of the tree, and
+look at the left and right branches. Since the left branch is annotated with a two, we know that we
+must look to the right in order to get the fourth element, since the left branch only has two
+children in it. We take the right branch, and once more look to the left and to the right. This
+time, we're looking at a pair of leaves, so the annotations are both one. However, we know that
+these correspond to indices three and four, since we know we've skipped two elements by going to the
+right branch of the top node (because the left branch had annotation two). Thus, we know that the
+right branch of our current node is the third element, and we can access and return it. As long as
+the tree we impose on top of our list is balanced, we will be able to access any element in $O(\log
+n)$ time.
+
+We can implement this search fairly easily.
+\begin{haskell}
+-- Extract the annotation from a leaf or intermediate node.
+annotation :: Tree a -> Int
+annotation (Branch i _ _) = i
+annotation (Leaf i _) = i
+
+-- Look up an index in the tree.
+treeLookup :: Tree a -> Int -> Maybe a
+treeLookup tree i = 
+  -- Use a helper function which takes the number of elements skipped.
+  -- At the top-level call, we've skipped no elements, so we pass zero.
+  go tree 0
+  where
+    -- At a leaf, make sure the index is the one we expected.
+    -- If it isn't, then we reached the leaf too soon, probably because
+    -- the binary tree was smaller than expected (index out of bounds).
+    go (Leaf a x) seen =
+      if a + seen == i + 1
+      then Just x
+      else Nothing
+
+    -- At a branch, look at the left branch and decide whether to go there.
+    go (Branch _ left right) seen =
+      -- Only take the left branch if the index we're searching in
+      -- comes earlier than the right branch.
+      if annotation left + seen > i
+      then go left seen
+      else 
+        -- If we take the right branch, we've skipped some elements.
+        -- Pass the total number of skipped elements to the recursive call.
+        go right (annotation left + seen)
+\end{haskell}
+
+
+The \inline{fingertree} package extends the data structure here into 2-3 finger trees, which are
+similar to balanced binary but with a few properties that make them much nicer for immutable
+languages. For our purposes, we simply need to know that the trees are somewhat balanced and give us
+approximately $O(\log n)$ access time to their leaves, and that all the data in the trees is stored
+at the leaves, just like in the example above.
+
+However, instead of storing an integer as an annotation, the intermediate nodes are annotated with a
+generic monoidal tag. Thus, the tree above would be written somewhat differently:
+\image{abstractions}{fingertree2} % Show same tree, but with Sum Int instead of Int
+Note that the tag on any node is just the monoidal product (in this case, the sum) of any nodes it
+has as a child.
+
+In order to create a new \inline{FingerTree}, the package provides an \inline{empty} value
+representing a finger tree with no elements in it. Elements may be inserted on the left or right with the functions
+\begin{haskell}
+(<|) :: Measured v a => a -> FingerTree v a -> FingerTree v a
+(|>) :: Measured v a => FingerTree v a -> a -> FingerTree v a
+\end{haskell}
+The libraries suggests remembering these operators as triangles with new elements at the pointy
+ends. Unlike our previous example where we manually created leaves with annotation value one, we
+don't pass the annotation directly. Instead, our value type must be an instance of the
+\inline{Measured} typeclass, which looks like this:
+\begin{haskell}
+class Monoid v => Measured v a | a -> v where
+    -- Things that can be measured.
+    measure :: a -> v
+\end{haskell}
+Ignoring the funky bar and \inline{a -> v} in the class declaration (those are functional
+dependencies), this class says that you can convert your value \inline{a} into some measure
+\inline{v} which is a monoid.
+
+\begin{tangent}[frametitle=Functional Dependencies]
+Functional dependencies are an advanced feature of Haskell typeclasses. Since they are not part of
+the standardized Haskell language, they are provided in GHC only if you enable the
+\inline{FunctionalDependencies} extension. They are usually used along with the
+\inline{MultiParamTypeClasses} extension, which is required to have typeclasses with multiple type
+variables (parameters).
+
+Multiparameter typeclasses together with functional dependencies allow you to encode in your type
+class that one of the parameters limits the others. For instance, in the class
+\begin{haskell}
+class Monoid v => Measured v a | a -> v where
+    measure :: a -> v
+\end{haskell}
+the syntax \inline{| a -> v} means that the value of the \inline{v} parameter is \emph{uniquely
+determined} by a. That is, it would be illegal to have two instances of the \inline{Measured}
+typeclass in which the \inline{a} variable was instantiated to the same type whereas the \inline{v}
+type was different.
+
+In this case, the functional dependency is indicating in the type system that there is only one way
+to measure a particular element. We could probably get along without this, but then we would
+probably need to give the type inference engine other hints.
+\end{tangent}
+
+This measure is the monoidal tag that gets placed in the tree. Thus, we can re-implement our
+fast-lookup list as a \inline{FingerTree} where the measure of \emph{any} value is just \inline{Sum
+1}. We choose \inline{Sum 1} because we want to add (as in normal addition) the tags of the children
+to get the tag of the parent, which is what the monoid instance for \inline{Sum} does.
+\begin{haskell}
+-- An element of our fast-access list.
+data Element a = Element a
+
+-- The measure of any element is just one.
+instance Measured (Sum Int) (Element a) where
+    measure _ = Sum 1
+\end{haskell}
+
+At this point, we can use functions provided in the \inline{fingertree} package to implement our
+search. It turns out our lookup is already mostly implemented, though not in the way we might
+expect! The package provides the following functions to us:
+\begin{haskell}
+-- Given a monotonic predicate p, dropUntil p t is the rest of t after
+-- removing the largest prefix whose measure does not satisfy p.
+dropUntil :: Measured v a => (v -> Bool) -> FingerTree v a -> FingerTree v a
+\end{haskell}
+This is a more general version of the \inline{drop} function we're used to (the one that chops off
+elements from the front of a list). However, instead of chopping off a fixed number of elements,
+\inline{dropUntil} keeps dropping elements until their combined measure satisfies some predicate.
+Recall that \inline{v} is a monoid, so all the measures of the dropped elements can be combined
+before being passed to the predicate \inline{p}. 
+
+In order to use this to implement our lookup, we just need to create a predicate \inline{p} which
+returns \inline{False} until some desired $k$ elements have been dropped. Since the monoid just
+counts the total number of elements, this predicate can be created by thresholding on the number of
+dropped elements; in other words, \inline{p = (> Sum k)}. The \inline{Sum} monoid conveniently
+implements \inline{Ord}, so we don't need to unwrap it.
+
+Once we apply \inline{dropUntil (> Sum k)}, we are left with a sequence that starts with the $k$th
+element. We can extract it using \inline{viewl}, which looks at the leftmost element of the finger
+tree; this yields a left view data structure, which we can then pattern match on to extract our
+result. Thus, the complete lookup would be
+\begin{haskell}
+index :: FingerTree (Sum Int) (Element a) -> Int -> Maybe a
+index tree k = 
+  -- Discard the first k elements, and look at the leftmost remaining element.
+  case viewl (dropUntil (> Sum k) tree) of
+    -- If it's empty, we've dropped all elements,
+    -- and this index was out of bounds to begin with.
+    EmptyL -> Nothing
+    Element x :< _ -> Just x
+\end{haskell}
+
+We can then use this as follows:
+\begin{haskell}
+-- fromList is provided by Data.FingerTree
+let tree = fromList (map Element ['a'..'z']) in
+  print (index tree 13) -- prints Just 'n'
+\end{haskell}
+Since this application (quick lists) is so common, its shipped in base Haskell as \inline{Data.Sequence}.
+
+The real power of abstraction comes from code re-use, and it turns out that the finger tree data
+structure plus the monoid abstraction allow us great flexibility. With almost the same code as
+before, we can use the finger trees as a priority queue, instead of a fast access list. In order to
+do that, we must change the definition of our monoid. For demonstration purposes, our tasks
+(elements in the priority queue) will be strings, and the priority of a string will be its length:
+\begin{haskell}
+data PrioritizedString = Str String
+    
+priority :: PrioritizedString -> Int
+priority (Str s) = length s
+\end{haskell}
+This time, instead of searching for an element with a particular index, we wish to search for an
+element with a particular priority. The key difference lies in the fact that instead of combining
+priorities through addition, we combine priorities by taking their maximum. Before we write the
+\inline{Measured} instance, we must have an appropriate monoid for maximums:
+\begin{haskell}
+data Maximum = Max Int deriving Eq
+
+instance Monoid Maximum where
+  -- The identity element is just the minimum possible integer.
+  mempty = Max minBound
+
+  -- Combining two elements is taking the greater one.
+  mappend (Max x) (Max y) = Max (max x y)
+\end{haskell}
+Once we have this monoid defined, we can define the measure for our prioritized strings:
+\begin{haskell}
+instance Measured Maximum PrioritizedString where
+  measure = priority
+\end{haskell}
+
+With these two instances in place, we're ready to go. We'd like to be able to find the highest
+priority element element in our priority queue. First of all, we know that the top node annotation
+will be the monoidal sum of all annotations below it. Since our monoid just takes the maximum of two
+elements to combine them, the top annotation \emph{will be} the maximum priority in the tree. Thus,
+to find the top priority element, we just \inline{dropUntil} we reach a priority that is equal to
+the one at the top of the tree:
+\begin{haskell}
+longestString :: FingerTree Maximum PrioritizedString -> Maybe String
+longestString tree = 
+  -- The maximum priority is at the top of the tree.
+  let maximumPriority = measure tree in
+    -- Discard elements until we find the most important one.
+    case viewl (dropUntil (== maximumPriority) tree) of
+      -- If it's empty, there were no elements to begin with.
+      EmptyL -> Nothing
+      Str x :< _ -> Just x
+\end{haskell}
+There are two interesting things to note about this code. First of all, we use \inline{measure}
+directly on the \inline{tree}, and we do not in any way extract its top node. This is because
+\inline{Data.FingerTree} provides us with the following instance:
+\begin{haskell}
+-- The cached measure of a tree.
+instance Measured v a => Measured v (FingerTree v a) where ...
+\end{haskell}
+This instance just accesses the measure at the top level of a tree, which is exactly what we need.
+The other thing you'll note is that we use equality on the priority, which is why we needed a
+\inline{deriving Eq} when we originally defined our \inline{Maximum} data type.
+
+At this point, we've successfully used the \inline{fingertree} library and data structure to define
+two different things: a list with fast indexing, and a priority queue. Due to the clean interface
+that the Monoid typeclass and abstraction allows, we were able to define both with not much more
+than ten lines of code. We were able to leverage a very efficient and powerful library to do
+multiple very different things by using the right fine-grained abstraction, learning about monoids
+along the way.
+
+\section{Functors}
+\label{sec:functors}
+
+In the previous section, we started off our study of abstraction in Haskell with the concept of a
+monoid, which was, roughly speaking, a type of thing that you can combine together. In this section,
+we'll get some more practice with Haskell-style abstract thinking by discussing yet another
+abstraction used by Haskell programmers on a daily basis.
+
+Recall the \inline{map} function, which applies a function to every element of a list:
+\begin{haskell}
+map :: (a -> b) -> [a] -> [b]
+\end{haskell}
+
+What makes lists special, though? Suppose we had a simple binary tree data structure:
+\begin{haskell}
+-- Binary tree with a value of type 'a' at each node of the tree.
+data Tree a = Leaf a | Branch a (Tree a) (Tree a)
+\end{haskell}
+We can define a function very similar to \inline{map} for our \inline{Tree} data structure. Let's
+call it \inline{treeMap}:
+\begin{haskell}
+treeMap :: (a -> b) -> Tree a -> Tree b
+treeMap f (Leaf a) = Leaf (f a)
+treeMap f (Branch a left right) =
+  Branch (f a) (treeMap f left) (treeMap f right)
+\end{haskell}
+
+Indeed, we're beginning to see a pattern! We often have a container (such as \inline{[a]} or
+\inline{Tree a}), and we'd like to apply some function of type \inline{a -> b} to every element in
+the container. 
+
+What we're looking at turns out to be a bit more abstract than just containers. In Haskell, this
+abstraction is known as the \emph{functor} (a name which, like many things in Haskell, comes from
+category theory). The associated type class looks like this:
+\begin{haskell}
+class Functor f where
+  fmap :: (a -> b) -> f a -> f b
+\end{haskell}
+
+We've already seen two types that fit this pattern, namely lists and trees. We can provide an
+instance of each:
+\begin{haskell}
+-- This instance already exists in the standard library.
+instance Functor [] where
+  fmap = map
+
+instance Functor Tree where
+  fmap = treeMap
+\end{haskell}
+
+Note that we're implementing a typeclass for \inline{Tree}, not \inline{Tree a}. Although
+\inline{Tree} by itself is not a type (just something we can use to create a type, often called a
+type constructor), we can use it in typeclasses. In fact, if we look at the signature of
+\inline{fmap} we see that it contains the types \inline{f a} and \inline{f b}, which means that
+whatever \inline{f} is, it \emph{has} to be a type constructor that takes \emph{exactly} one
+argument.
+
+So far, we've seen that we can create typeclasses that abstract over types (things like
+\inline{Maybe a} and \inline{Int}) as well as typeclasses that abstract over type constructors (like
+\inline{Maybe} or \inline{Tree}). Not only are these completely different things, but it would make
+no sense to mix them! Suppose we tried to implement a functor instance for \inline{Int}:
+\begin{haskell}
+instance Functor Int where
+  fmap = ...
+\end{haskell}
+In this case, \inline{fmap} would have type \inline{fmap :: (a -> b) -> Int a -> Int b}, which makes
+no sense (what is an \inline{Int a}?).
+
+In order to make sure that instances and types makes sense, Haskell has a \newterm{kind} system,
+which is effectively a type system on top of types (instead of on top of values). The kind system is
+a bit simpler, though, having only the following two rules:
+\begin{itemize}
+    \item The kind of all value types (such as \inline{Maybe a}, \inline{Int}, and \inline{String})
+        is denoted \inline{*} (an asterisk).
+    \item The kind of a type constructor that takes something of kind \inline{k} and outputs
+        something of kind \inline{g} is denoted \inline{k -> g}.
+\end{itemize}
+
+While the first rule is fairly simple, the second can be a bit more difficult to parse. Kinds with
+\inline{->} act similarly to types with \inline{->}. A type with kind \inline{* -> *} is something
+that takes a concrete value type (such as \inline{Int}) and yields another concrete value type. A
+good example of this would be \inline{Maybe} --- \inline{Maybe} takes a type, such as \inline{Int},
+and yields a new value type, \inline{Maybe Int}. Thus, \inline{Maybe} on its own must have kind
+\inline{* -> *}. By the same rules, we can determine that \inline{Either} must have kind \inline{* -> * -> *}.
+
+In the case of the \inline{Functor} instance, we can tell by the signature 
+\inline{fmap :: (a -> b) -> f a -> f b} that the type \inline{f} must have kind \inline{* -> *},
+because the type \inline{f a} appears as a real value (an argument to \inline{fmap}) and must thus
+be of kind \inline{*}.
+\begin{tangent}[frametitle=Explicit Kind Signatures]
+GHC allows you to explicitly set the kind of type variables if you enable the
+\inline{KindSignatures} extension. With that extension enabled, you could write something like
+\begin{haskell}
+class MyFunctor (f :: * -> *) where
+  myFmap :: (a -> b) -> f a -> f b
+\end{haskell}
+You could also use the same syntax with \inline{data} declarations:
+\begin{haskell}
+data StrangeValue (m :: * -> *) = Value (m Int)
+\end{haskell}
+\end{tangent}
+
+Before moving on, let's look at a few more examples of functors to solidify our understanding. In
+order to write a \inline{Functor} instance, we need a type of kind \inline{* -> *} (a type
+constructor that takes on argument). One type constructor we've worked with a lot is \inline{Maybe},
+and indeed, this is one of the most common functor uses in Haskell. A \inline{Maybe} value
+represents a value or computation that might have failed (and yielded \inline{Nothing}). Coming from
+an imperative language, a \inline{Maybe a} may be similar to a nullable \inline{a}. In order to
+work with these failed or nullable values, we can use the following functor instance:
+\begin{haskell}
+instance Functor Maybe where
+  -- Do nothing with a Nothing.
+  fmap f Nothing = Nothing
+
+  -- Apply the function to whatever is inside the Just.
+  fmap f (Just x) = Just (f x)
+\end{haskell}
+
+It turns out that this instance is \emph{incredibly} useful for chaining together computations that
+work on something that might've failed. For instance, suppose we want to use the following
+\inline{lookup} function:
+\begin{haskell}
+-- Look up a value in an association list.
+lookup :: Eq a => a -> [(a, b)] -> Maybe b
+\end{haskell}
+Given a list like \inline{[(1, "Hello"), (2, "Bye")]} we can use \inline{lookup} to extract the first
+\inline{b} associated with a given \inline{a}:
+\begin{haskell}
+let associations = [(1, "Hello"), (2, "Bye")] in
+  print (lookup 1 associations) -- Prints Just "Hello"
+\end{haskell}
+Suppose we'd like to do a lookup, and then perform some other computations if it succeeds (for
+example, reverse the string and remove duplicate characters). One way to achieve this is through a
+\inline{case} statement, using \inline{nub} from the \inline{Data.List} module:
+\begin{haskell}
+-- Lookup a string in an association list.
+-- Then, reverse it, and remove duplicate consecutive characters.
+case lookup 1 associations of
+  Nothing -> Nothing
+  Just string -> nub (reverse string)
+\end{haskell}
+Alternative, using our \inline{Functor} instance for \inline{Maybe}, we can write this very cleanly
+and succinctly with \inline{fmap}:
+\begin{haskell}
+fmap (nub . reverse) (lookup 1 associations)
+\end{haskell}
+We create a new function by composing \inline{nub} and \inline{reverse}, and then apply it inside
+the \inline{Maybe}. Just like the \inline{case}, this yields \inline{Nothing} if the lookup fails,
+or a \inline{Just} value if it succeeds.
+
+Just like we have an instance for \inline{Maybe}, we can create one for \inline{Either}. Recall that
+the \inline{Either} type is declared as follows:
+\begin{haskell}
+data Either a b = Left a | Right b
+\end{haskell}
+Since it takes two type parameters, it must be of kind \inline{* -> * -> *}. A \inline{Functor}
+instance declaration for \inline{Either} wouldn't make sense, since \inline{Functor} requires
+something of kind \inline{* -> *}. However, by supplying \inline{Either} with one variable in the
+declaration, we can make it's kind into \inline{* -> *}: just like you can curry Haskell functions,
+you can curry Haskell types. Thus, we can write the following instance
+\begin{haskell}
+instance Functor (Either a) where
+  fmap f (Left a) = Left a
+  fmap f (Right b) = Right (f b)
+\end{haskell}
+Note that by declaring the instance for \inline{Either a}, we satisfy the requirement that the
+functor be something of kind \inline{* -> *}. What this means is that the \inline{a} is fixed
+throughout the \inline{fmap}, so using \inline{fmap} on something of type \inline{Either a b} cannot
+change the \inline{a} (but it can change the \inline{b}). In this instance, the type of
+\inline{fmap} is specialized to
+\begin{haskell}
+fmap :: (a -> b) -> Either c a -> Either c b
+\end{haskell}
+Note that we have to change the name of the first type variable in \inline{Either a} to
+\inline{Either c}, in order to avoid conflicts with the \inline{a} and \inline{b} in \inline{a -> b}.
+
+Since many Haskell data structures have more than one the parameter, the trick of currying one type
+parameter and using the curried type to declare a functor is fairly common. For instance, we can do
+the same thing with the tuple type \inline{(a, b)}: we fix the \inline{a} and declare a
+\inline{Functor} instance with the \inline{b} as the functor contents:
+\begin{haskell}
+instance Functor ((,) a) where
+  fmap f (a, b) = (a, f b)
+\end{haskell}
+Note that due to a strange quick of Haskell syntax, we write \inline{(,) a} in order to declare a
+tuple type constructor of kind \inline{* -> *} which has the first element as \inline{a} and the
+second element as an argument to the constructor.
+
+\begin{tangent}[frametitle=Tuple Sections]
+We can write \inline{(,) a} for the tuple type constructor of kind \inline{* -> *}. 
+Similarly, we can write \inline{(,)} at the value level to reference the function of type 
+\inline{a -> b -> (a, b)}. In other words, we can write \inline{(,) 3 "Hi"} in order to create the
+tuple \inline{(3, "Hi")}, or we can write \inline{(,) 3} to instead of \inline{\x -> (3, x)}.
+
+We can use the same trick with tuples of more than two elements; for instance, the kind of the 
+type constructor \inline{(,,)} is \inline{* -> * -> * -> *} and the type of the value constructor 
+\inline{(,,)} is \inline{a -> b -> c -> (a, b, c)}. Try these out in GHCi --- since the notation is
+overloaded for both values and types, it may be a bit tricky to keep things straight!
+
+Since writing these for large tuples is unwieldy, GHC offers an extension called
+\inline{TupleSections}. When enabled, this extension allows you to intersperse elements inside
+incomplete tuples. For instance, you can write \inline{(3,)} instead of \inline{\x -> (3, x)}.
+Similarly, you can write \inline{(,3)} instead of \inline{\x -> (x, 3)}, or \inline{(3,,,'c',)} 
+instead of \inline{\x y z -> (3, x, y, 'c', z)}. 
+
+However, watch out --- generally, if you have tuples with more than two or three elements, you
+probably want to use your own data type with a name instead.
+\end{tangent}
+
+Note that a similar syntactic quirk applies to function types. Namely, in order to use the type
+\inline{(c ->)} of kind \inline{* -> *}, you must write \inline{(->) c}. Thus, the type \inline{(->)
+c b} is completely equivalent to \inline{c -> b}. The observation that \inline{(->) c} has kind
+\inline{* -> *} might lead us to an intriguing question\ldots can we write a functor instance for
+it?
+
+Suppose we want to write a \inline{Functor} instance for \inline{(->) c}. We'd start with our general
+instance scaffold:
+\begin{haskell}
+instance Functor ((->) c) where
+  fmap = ...
+\end{haskell}
+However, what would we do with \inline{fmap}? What does that even mean?
+
+In this case, it's often helpful to think about the types involved, and let the types guide your
+coding. We know that for a functor \inline{f}, the definition tells us that \inline{fmap} has type
+\inline{fmap :: (a -> b) -> f a -> f b}. Since we are specializing \inline{f} to \inline{(->) c},
+\inline{fmap} must have type \inline{(a -> b) -> (->) c a -> (->) c b}. If we undo the syntactic
+quirkiness, we find that \inline{fmap} has type \inline{(a -> b) -> (c -> a) -> (c -> b)}. Since
+we're letting the types guide our intuition and coding, can you think of something that has that
+type? The key observation is that both of the two arguments are one-argument functions, and the
+output of one is the input to the other. It turns out that the type of this \inline{fmap} is the
+same as the type of \inline{(.)}, the composition operator!  Alternatively, we can write function
+composition ourselves, and write the following instance:
+\begin{haskell}
+instance Functor ((->) c) where
+  fmap f g = \c -> f (g c)
+\end{haskell}
+The following instance is identical in semantics:
+\begin{haskell}
+instance Functor ((->) c) where
+  fmap = (.)
+\end{haskell}
+And that's it --- it turns out that \inline{(->) c} can indeed be made into a functor, and pretty
+easily, too!
+
+This raises two questions:
+\begin{itemize}
+    \item Is this really a functor? Does it behave similarly to the other functor's we've seen?
+    \item What does it mean that this is a functor? What's the intuition behind this instance?
+\end{itemize}
+
+The first question can be answered by doing what we usually do with Haskell abstractions --- coming
+up with a set of laws that instances of the abstraction must follow, and verifying that the
+particular instance we're interested in follows those laws.
+
+In the case of functors, we'd like to enforce a few of our basic intuitions. Our intuitions for
+functors should tell us that \inline{fmap}ing a function over a functor is equivalent to applying
+the function inside the functor. Due to this intuition, we may think that if we apply a function
+that does nothing, that should have no effect and do nothing to the larger data structure. We can
+codify this in the following law:
+\begin{haskell}
+fmap id == id
+\end{haskell}
+Note that we are writing in point-free style, where we avoid mentioning the actual object that these
+functions are applying to. What we really mean is that for any functor \inline{f} and any type
+\inline{f}, if any \inline{x} has type \inline{f a}, \inline{fmap id x} must be equal to \inline{x}.
+
+The other law is motivated in the same way. Since \inline{fmap}ing a function is like applying a
+function inside the container, \inline{fmap}ing the composition of two functions (where one function
+is directly applied to the output of another) should be the same as \inline{fmap}ing the first
+function and then \inline{fmap}ing the second function. In other words,
+\begin{haskell}
+fmap f . fmap g == fmap (f . g)
+\end{haskell}
+
+These two laws are known together as the \newterm{functor laws}, and codify the behaviours that a
+``proper'' \inline{Functor} instance must follow. These are quite useful in guiding us in instance
+implementation. For example, suppose we tried to implement the following \inline{Functor} instance
+for lists:
+\begin{haskell}
+instance Functor [] where
+  fmap _ [] = []
+  fmap f xs = [f (head xs)]
+\end{haskell}
+We can verify that the type of \inline{fmap} is correct. However, the behaviour is a little bit
+strange --- we only keep the first element of the list! Indeed, this strange functor instance would
+be eliminated by checking the first functor law:
+\begin{haskell}
+-- First functor law: fmap id == id
+fmap id [1, 2, 3] /= id [1, 2, 3]
+
+-- The first functor law is not satisfied:
+-- fmap id [1, 2, 3] == [1]
+-- id [1, 2, 3] == [1, 2, 3]
+\end{haskell}
+
+Now that we have some functor laws to guide us, we can answer our first question and verify that our
+instance for \inline{(->) c} is a valid functor. Since \inline{fmap} is just \inline{(.)}, we can
+check the first law by verifying that
+\begin{haskell}
+fmap id g == id g
+-- ...which expands to...
+id . g == g
+\end{haskell}
+However, we know that \inline{id} does nothing when composed (on the right or the left), so the
+first law holds! The second law can be verified in the same manner --- by taking the definitions of
+fmap, expanding them, and then using what we know about function composition and \inline{id} to
+prove what we want.
+
+Finally, we can answer our second question, and try to provide some intuition for this functor.
+Although we can attempt to provide intuition, it is important to remember that ultimately, a
+\inline{Functor} is simply any type along with an implementation of \inline{fmap} which satisfies
+the functor laws. Our intuition may be helpful for reasoning about this functor, but the definition
+is \emph{just} that --- something which satisfies the requirements and laws of a functor. With that
+said, the intuition that helps with the \inline{(->) c} functor is that we can view this as a data
+structure with a hole in it, where the hole needs something of type \inline{c} to fill it.
+
+For example, suppose we have a data structure
+\begin{haskell}
+data Thing = Thing Int String
+\end{haskell}
+In that case, we can create a type that represents a \inline{Thing} with a hole.
+\begin{haskell}
+type ThingWithHole = Int -> Thing
+\end{haskell}
+The data structure with a hole is represented by a function, because once we get something to fill
+the hole (an \inline{Int}), we can create a complete data structure (a \inline{Thing}). Thus,
+applying \inline{fmap} to something of type \inline{(->) c a} is like operating on a data structure
+of type \inline{a} with an unfilled hole of type \inline{c}, just like applying \inline{fmap} to
+something of type \inline{Maybe a} is operating on a data structure of type \inline{a} that might
+actually be null (\inline{Nothing}).
+
+\begin{tangent}[frametitle=A Synonym for \inline{fmap}]
+The operator \inline{\$} is often used for function application, where \inline{f \$ x} is equivalent
+to just \inline{f x}. However, there is also an operator \inline{<\$>} which allows you to operate
+inside a functor. \inline{<\$>} is just function application inside a functor --- in other words,
+it's just fmap. This operator can be defined as simply as \inline{<\$> = fmap}, and is exported in
+the base library from \inline{Control.Applicative}, although it is defined for any
+\inline{Functor}. It is often used in chains of computation. For instance, our previous example for
+applying some functions to the output of a lookup
+\begin{haskell}
+fmap (nub . reverse) (lookup 1 associations)
+\end{haskell}
+would be written as follows using the infix \inline{<\$>} operator:
+\begin{haskell}
+nub <$> reverse <$> lookup 1 associations
+\end{haskell}
+This mirrors the non-functor version, which would just have \inline{\$}s in place of of
+\inline{<\$>}s. Depending on who you ask, the latter version is clearer, and is very standard across
+the Haskell community.
+\end{tangent}
+
+\section{Monads}
+\label{sec:monads}
+Functors, along with the \inline{Functor} typeclass and \inline{fmap}, can be very useful for
+talking about computations happening inside a container or computational context. For example, we
+can use the \inline{Functor} instance for \inline{Maybe} in order to write code which operates on a
+failed computation and/or nullable value (see the previous section for some examples). But there are
+many cases where the \inline{Functor} abstraction turns out to be insufficient.
+
+Consider the \inline{head} function that takes the first element of a list:
+\begin{haskell}
+head :: [a] -> a
+head [] = error "empty list"
+head (x:xs) = x
+\end{haskell}
+Instead of crashing with an error on empty lists, we may instead want to signal failure by returning
+a \inline{Maybe} value, allowing us to write safer, typechecked code. We could rewrite \inline{head}
+and call it \inline{headMay}, with the -\inline{May} suffix indicating that it returns a
+\inline{Maybe} value:
+\begin{haskell}
+headMay :: [a] -> Maybe a
+headMay [] = Nothing
+headMay (x:xs) = Just x
+\end{haskell}
+
+\begin{tangent}[frametitle=Avoiding Partial Functions]
+The function \inline{head}, and others like it, are called \newterm{partial functions}. A partial
+function is a function which throws an exception (crashes with an error) when given some inputs.
+Other examples of partial functions in the standard Haskell \inline{Prelude} include \inline{read}
+(which crashes when given an input it can't parse, such as \inline{read "Hello" :: Int}) and
+\inline{tail}, \inline{last}, \inline{minimum}, \inline{maximum} (all of which crash on an empty list).
+
+All of these are ultimately defined through a special function called ``error'':
+\begin{haskell}
+error :: String -> a
+\end{haskell}
+The \inline{error} function has a nonsensical type and escapes the type system; instead of returning
+something of type \inline{a}, it just crashes with an error. In this case, it's very clear that
+\inline{error} must crash --- there is no generic way to turn a \inline{String} into any \inline{a}.
+
+The name ``partial function'' comes from mathematics. In mathematics, a function from some set $A$
+to another set $B$ is defined as a particular mapping that can take \emph{any} element of $A$ and
+output some element of $B$. For something to be a function, it must be defined on \emph{every}
+element of $A$. Thus, Haskell programmers will often use the phrase ``partial function'' to describe
+a function that only operates on a subset of its input type (that is, a function which is declared
+to take an \inline{a} to a \inline{b}, but actually only works on some values of type \inline{a}).
+
+Partial functions are generally considered a bad idea, as they can introduce unexpected failure
+points in your program and prevent the type system from catching errors. Many of the partial
+functions in \inline{Prelude} exist in non-partial variants in the \inline{safe} package. For
+instance, the \inline{safe} package includes \inline{headMay}, \inline{tailMay}, \inline{readMay},
+and a number of other safe functions.
+\end{tangent}
+
+Now, suppose we're storing a 3D array as a list. (Due to the runtime characteristics of linked
+lists, this is a \emph{terrible} idea in practice!) For some reason, we need to access the top left
+corner of this 3D array. In other words, we have a triply nested list (type \inline{[[[a]]]}) and
+we'd like to access the first \inline{a} in it by repeatedly taking the \inline{head} of these
+lists. If we're using plain old \inline{head}, this is very easy:
+\begin{haskell}
+firstElement :: [[[a]]] -> a
+firstElement = head . head . head
+\end{haskell}
+We can test that it works by plugging in \inline{firstElement [[[1]]]}; indeed, we get \inline{1},
+as expected. However, if we plug in \inline{[[]]} or \inline{[[[]]]}, we get the standard
+\inline{head} exception, since the element we want to access doesn't exist.
+
+Naturally, as Haskell programmers, we'd like to rewrite this to be safe, just like we changed
+\inline{head} into \inline{headMay}. A first attempt might look something like this:
+\begin{haskell}
+-- Does not work!
+firstElementMay = headMay . headMay . headMay
+\end{haskell}
+However, if you try putting this into GHC, you'll see that these types don't match! By returning a
+\inline{Maybe}, we've broken our ability to compose functions! We might be tempted to turn to our
+trusty \inline{Functor} instance, since we've seen that that using \inline{fmap} will help us with
+error handling. If we try that, we might get something like this:
+\begin{haskell}
+-- Typechecks, but doesn't do what we want!
+firstElementMay = fmap (fmap headMay) . fmap headMay . headMay
+\end{haskell}
+Indeed, that definition typechecks (better than nothing!), but instead of just giving us a
+\inline{Maybe a} we get a much uglier beast of the form \inline{Maybe (Maybe (Maybe a))}. Clearly,
+this is not what we wanted, because pattern matching on that thing will be a huge pain!
+
+The underlying reason for the difficulty here is that the \inline{Functor} instance is good for
+modeling a single missing value, but it \emph{isn't} food for modeling a process in which any
+individual \emph{step} might fail. In words, one might describe what we're doing as a process:
+Take the head three times, and if any of those fail, return \inline{Nothing}, otherwise, return
+\inline{Just} the result. Indeed, we can implement this with pattern matching:
+\begin{haskell}
+-- Works, but is very clunky.
+firstElementMay :: [[[a]] -> Maybe a
+firstElementMay xs = case headMay xs of
+  Nothing -> Nothing
+  Just xs' -> case headMay xs' of
+    Nothing -> Nothing
+    Just xs'' -> xs''
+\end{haskell}
+Eek, that's ugly! In order to clean this up, we're going to follow our intuition of describing this
+as a process that might fail at any step. Let's implement this as the following function:
+\begin{haskell}
+processWith :: Maybe a -> (a -> Maybe b) -> Maybe b
+processWith value func =
+  case value of
+    Nothing -> Nothing
+    Just x -> Just (func value)
+\end{haskell}
+
+We've named this function very deliberately: if we use it in infix form (using backticks to turn the
+function into an infix operator), we get something that is very element and reads almost like
+English:
+\begin{haskell}
+-- Clean and working!
+firstElementMay :: [[[a]] -> Maybe a
+firstElementMay xs =
+  headMay xs `processWith` headMay `processWith` headMay
+\end{haskell}
+
+Note that in the definition above, we have the first \inline{headMay} as a special case. We start
+off our processing chain with its result, \inline{headMay xs}. In order to write the entire process
+as one pipeline without the first one being a special case, we'll define a strangely named
+\inline{return} function which just starts us off inside the \inline{Maybe}:
+\begin{haskell}
+return = Just
+\end{haskell}
+Now we can write this pipeline in a uniform manner. We use \inline{return} to put something inside
+the pipeline, and then use \inline{processWith} to define what needs to happen:
+\begin{haskell}
+firstElementMay :: [[[a]] -> Maybe a
+firstElementMay xs =
+  return xs `processWith` headMay 
+            `processWith` headMay
+            `processWith` headMay
+\end{haskell}
+The name \inline{return} may seem a little strange at first, but stick with it for now --- it will
+make sense eventually! (Note that \inline{return} is just a name. Don't make the mistake of thinking
+it's something syntactically special, just because other languages tend to have \inline{return} as a
+keyword!)
+
+Using \inline{return} and \inline{processWith}, we can define very clean and elegant processing
+pipelines. It turns out this pattern is \emph{very} common in Haskell, and in programming in
+general. Before formalizing this abstraction, let's look at another example.
+
+The key to this abstraction is that, roughly speaking, we're generalizing over \emph{types} of
+computation. In the case of \inline{processWith} and \inline{Maybe}, we are creating a pipeline of
+processes that might fail and modeling a computation that has the ability to fail at any step. At
+any step, our potentially failing computation can produce either one value or zero values (failure).
+We can generalize this behaviour by talking about a computation that can produce \emph{any} number
+of values at each step.
+
+In order to represent the state of a computation that can produce multiple values, we'll just use a
+plain old list. At each step of the computation, we'll take all the current values, process them
+with the next step of the computation, and collect all the results. Note that the step gives us a
+list of results, as well. The result looks like this:
+\begin{haskell}
+processWith :: [a] -> (a -> [b]) -> [b]
+processWith values nextStep =
+  let newOutputs :: [[b]]
+      newOutputs = map nextStep values in
+    concat newOutputs
+\end{haskell}
+(Note that this is showing another application of this pipelining abstraction; we can't actually
+write two functions named \inline{processWith} with different type signatures. That's what
+typeclasses are for.)
+
+Let's try this with a simple example. We'll start with the list \inline{[1, 2, 3]} and then we'll
+filter it by using a function that gets rid of odd numbers, \inline{\x -> if odd x then [] else
+[x]}. Combining these with \inline{processWith}, we get
+\begin{haskell}
+[1, 2, 3] `processWith` \x ->
+  if odd x
+  then []
+  else [x]
+\end{haskell}
+As expected, this gives us the result \inline{[2]}. (While you may note that using \inline{filter}
+would be much simpler in this case, this simple case does show off how our pipeline works in
+general.)
+
+Let's try this on another example. Suppose you want to write a function which takes the Cartesian
+product of two lists. Namely, given lists of \inline{x}s and lists of \inline{y}s, it produces all
+the  pairs \inline{(x, y)}. For the lists \inline{xs = [1, 2]} and \inline{ys = ["Hi", "Bye"]}, this
+would produce the output list \inline{[(1, "Hi"), (1, "Bye"), (2, "Hi"), (2, "Bye")]}. We could
+write this using pattern matching, though it takes a bit of thinking to figure out how to do it
+right:
+\begin{haskell}
+cartesianProduct :: [a] -> [b] -> [(a, b)]
+cartesianProduct xs [] = []
+cartesianProduct [] ys = []
+cartesianProduct (x:xs) ys = map tuple ys ++ cartesianProduct xs ys
+  where
+    tuple y = (x, y)
+\end{haskell}
+Alternatively, we could model this as a process which outputs multiple values. At the first step,
+the process outputs the \inline{xs}; at the second step, it outputs all the \inline{ys}; then, it
+combines them with tuples. This might seem a bit convoluted, but produces straight-forward (if
+syntactically ugly) code:
+\begin{haskell}
+cartesianProduct :: [a] -> [b] -> [(a, b)]
+cartesianProduct xs ys =
+  xs `processWith` (\x ->
+  ys `processWith` (\y ->
+  [(x, y)]))
+\end{haskell}
+At this point, we can complete our pattern by implementing a \inline{return} function:
+\begin{haskell}
+return :: a -> [a]
+return x = [x]
+\end{haskell}
+Now we see why it's called \inline{return}: it has a tendency to be used when we need to output a
+final value from our computation pipeline! Rewriting our Cartesian product with \inline{return} is a very
+minor modification:
+\begin{haskell}
+cartesianProduct :: [a] -> [b] -> [(a, b)]
+cartesianProduct xs ys =
+  xs `processWith` (\x ->
+  ys `processWith` (\y ->
+  return (x, y)))
+\end{haskell}
+Although this end result is arguably simpler than our original pattern matching example, this style
+of programming can be very natural. For instance, we wanted to extend this to three lists, the
+changes would be very small:
+\begin{haskell}
+cartesianProduct3 :: [a] -> [b] -> [c] -> [(a, b, c)]
+cartesianProduct3 xs ys zs =
+  xs `processWith` (\x ->
+  ys `processWith` (\y ->
+  zs `processWith` (\z ->
+  return (x, y, z))))
+\end{haskell}
+On the other hand, modifying the original pattern matching \inline{crossProduct} may be a bit
+tedious and somewhat more error-prone.
+
+As I alluded to earlier when we redefined the meaning of \inline{processWith}, this abstraction is
+codified in a Haskell typeclass, as usual. Although one might want to call this typeclass something
+like \inline{Pipeline} or \inline{Process} or \inline{Sequenceable}, in Haskell this typeclass is
+called \inline{Monad}. The typeclass renamed \inline{processWith} to an infix operator written
+\inline{>>=} (pronounced ``bind''):
+\begin{haskell}
+class Monad m where
+  return :: a -> m a
+  (>>=) :: m a -> (a -> m b) -> m b
+\end{haskell}
+Note how the type signature of \inline{>>=} looks exactly like \inline{processWith}, if you replaced
+\inline{m} with \inline{Maybe} or \inline{[]} (the list type constructor).
+
+We can implement \inline{Monad} instances for \inline{Maybe} and \inline{[]} using the
+\inline{processWith} and \inline{return} definitions we saw previously:
+\begin{haskell}
+instance Monad Maybe where
+  Nothing >>= _ = Nothing
+  Just x >>= f = f x
+  return = Just
+
+instance Monad [] where
+  values >>= nextStep = concat (map nextStep values)
+  return x = []
+\end{haskell}
+With these instances, our previous functions become
+\begin{haskell}
+firstElementMay :: [[[a]] -> Maybe a
+firstElementMay xs =
+  return xs >>= headMay 
+            >>= headMay
+            >>= headMay
+
+cartesianProduct :: [a] -> [b] -> [(a, b)]
+cartesianProduct xs ys =
+  xs >>= (\x ->
+  ys >>= (\y ->
+  return (x, y)))
+\end{haskell}
+
+If you've heard a lot about monads in Haskell, this is all they are --- they are a pattern for
+describing these sorts of pipelines. That's it! 
+
+Of course, like many abstractions, there are many applications of this abstraction where the word
+``pipeline'' or ``computation'' won't seem to be quite right, which is why Haskell programmers have
+a tendency to prefer abstract names (which may seem meaningless to the rest of us). As with the
+\inline{Monoid} abstraction and the \inline{Functor} abstraction, something is a \inline{Monad} if
+it implements the methods in the typeclass and follows some set of laws (called, unsurprisingly, the
+\newterm{monad laws}). It's important to note that there are no other requirements for being a
+\inline{Monad}, which means that sometimes, you'll find \inline{Monad} instances for things that do
+not follow your intuitions of ``pipelines'' at all.
+
+Like we did with \inline{Functor}s, we'll try to motivate the monad laws with intuition about how
+these pipelines \emph{should} be have. So far, we've defined \inline{return} as something hat just
+wraps a value in our \inline{Monad}. In the case of \inline{Maybe}, we wrapped values by putting
+them in a \inline{Just}, while with lists, we wrapped values by putting them in a one-element list.
+We'll enforce the intuition that \inline{return} doesn't do anything except wrap values with two
+laws, the first being as follows:
+\begin{haskell}
+m >>= return == m
+\end{haskell}
+This says that if you process \inline{m} using \inline{return}, you just get \inline{m} back.
+
+The second law is effectively a reverse of the first laws. Instead of processing a value which is
+already in a monad with \inline{return}, we'll lift a non-monadic value into a monad using
+\inline{return}. Then, we'll process this value with some function, and verify that the result would
+be the same had we just applied the function to the non-monadic value in the first place.
+\begin{haskell}
+return x >>= f == f x
+\end{haskell}
+
+The last monad law is a little bit more difficult, but effectively states that \inline{>>=} is an
+associative operator.
+\begin{haskell}
+(m >>= n) >>= p == m >>= (\x -> n x >>= p)
+\end{haskell}
+Note that this isn't quite associativity of \inline{>>=}, since we can't write \inline{m >>= (n >>= p)}
+on the right hand side (because \inline{n} is a function, not a value in a monad). Monads that don't
+follow this law can be very unintuitive. This law states that the \emph{grouping} of things in the
+pipeline doesn't matter; if our values go through the entire pipeline, it doesn't matter if we view
+the first two processes as one group (the left hand side of the equation above) or if we view the
+second two processes as one group (the right hand side). This may seem like something we can take
+for granted, but this is worth encoding as a law precisely because it seems like something we'd want
+to take for granted.
+
+\begin{tangent}[frametitle=Kleisli Composition]
+    Th monad laws also have another, slightly nicer formulation. We can define an operator called Kleisli
+    composition, written as follows:
+\begin{haskell}
+(>=>) :: (b -> m c) -> (a -> m b) -> (a -> m c)
+f >=> g = \a -> g a >>= f
+\end{haskell}
+    This allows us to easily compose functions that output something in a monad, and acts similar to
+    \inline{(.)}. If we write the monad laws using \inline{>=>} instead of \inline{>>=}, we get the
+    following three laws:
+\begin{haskell}
+-- 'return' is the identity
+return >=> f == f
+f >=> return == f
+
+-- >=> is associative
+(f >=> g) >=> h == f >=> (g >=> h)
+\end{haskell}
+    When written like this, the monad laws begin to resemble the monoid laws, with \inline{>=>}
+    replacing \inline{mappend} and \inline{return} replacing \inline{mempty}! It turns out this is not a
+    coincidence, but has a deep underlying meaning. However, that is out of the scope of this chapter.
+\end{tangent}
+
+
+While typeclasses and laws can be pretty powerful on their own, the \inline{Monad} abstraction is so
+important in Haskell that it has its own syntax, known as \inline{do} notation. This syntax allows
+us to write these monadic ``pipelines'' very cleanly, without resorting to anonymous functions like
+we did in the \inline{cartesianProduct} example. Do notation has three rules, which dictate how
+\inline{do} notation is expanded into a standard Haskell expression.
+\begin{enumerate}
+    \item The block of code
+\begin{haskell}
+do
+  variable <- m
+  nextStep
+\end{haskell}
+is expanded to
+\begin{haskell}
+m >>= (\variable -> do
+  nextStep)
+\end{haskell}
+Note that \inline{nextStep} may use \inline{variable}, and may consist of multiple statements.
+
+    \item The block of code
+\begin{haskell}
+do
+  firstStep
+  nextStep
+\end{haskell}
+is expanded to
+\begin{haskell}
+m >>= (\_ -> do
+  nextStep)
+\end{haskell}
+This case is identical to the previous one, but no variable name is bound. The output of \inline{m}
+is ignored.
+
+    \item The block of code
+\begin{haskell}
+do
+  let x = y
+  nextStep
+\end{haskell}
+is expanded to
+\begin{haskell}
+let x = y in do
+  nextStep
+\end{haskell}
+This allows us to easily embed \inline{let} statements in \inline{do} blocks. Note that there is no
+\inline{in} after the \inline{let}!
+\end{enumerate}
+With this notation, our \inline{firstElementMay} and \inline{cartesianProduct} functions become even
+cleaner:
+\begin{haskell}
+firstElementMay :: [[[a]] -> Maybe a
+firstElementMay xs = do
+  first <- headMay xs
+  second <- headMay first
+  headMay second
+
+cartesianProduct :: [a] -> [b] -> [(a, b)]
+cartesianProduct xs ys = do
+  x <- xs
+  y <- ys
+  return (x, y)
+\end{haskell}
+
+Although \inline{do} notation is incredibly convenient, beware of viewing it as simple imperative
+programming. Although it may look like an escape hatch from the functional paradigm into a more
+standard imperative language, \inline{do} notation is \emph{just} syntactic sugar over
+\inline{return} and bind (\inline{>>=}); forgetting that can lead to confusion and misunderstanding.
+Also, note that there are times where using \inline{return} and \inline{>>=} directly may be simpler
+than using \inline{do} notation, so do not be afraid to use them without the syntactic sugar. (For
+instance, the \inline{firstElementMay} implementation is arguably cleaner without \inline{do}
+notation.)
+
+\begin{tangent}[frametitle=Signaling Failure in Monads]
+In addition to \inline{>>=} and \inline{return}, the \inline{Monad} typeclass used by Haskell has
+another function, \inline{fail}, with the following type signature:
+\begin{haskell}
+fail :: String -> m a
+\end{haskell}
+The \inline{fail} function has absolutely \emph{nothing} to do with the theoretical abstraction of a
+monad, but exists in Haskell to allow for pattern matching in \inline{do} notation. When a pattern
+match fails, the \inline{fail} function is called. 
+
+Although usually \inline{fail} is just \inline{error}, sometimes this allows us to write very neat
+code. In the \inline{Maybe} monad, \inline{fail} simply returns \inline{Nothing}, so any pattern
+match failure results in \inline{Nothing}. This allows us to make assumptions about the structures
+we're pattern matching, and just get back \inline{Nothing} if our assumptions turn out to be wrong:
+\begin{haskell}
+-- Example of pattern matching in a Maybe do block.
+do
+  -- Create an association list.
+  let list = [(1, "a:3"), (2, "b:3")]
+
+  -- Lookup a value in the association list.
+  -- 'lookup' returns Nothing if the key doesn't exist.
+  -- If the key does it exist, it returns Just the value.
+  string <- lookup list 1
+
+  -- Pattern match directly on the string.
+  char:':':num <- return string
+
+  -- Use readMay from the Safe module.
+  int <- readMay num
+  return (char, num)
+\end{haskell}
+This simply outputs \inline{Just ('a', 3)}. However, if we replace
+\inline{"a:3"} with \inline{"no-3"} or any other string that doesn't fit our
+pattern, the entire block would return \inline{Nothing}.
+
+Note that including \inline{fail} in the \inline{Monad} typeclass is considered an implementation
+wart or perhaps even a mistake, so a good guideline to follow is to avoid using \inline{fail}
+explicitly. However, know that it is used any time a pattern match failure is encountered, such as
+the example above.
+\end{tangent}
+
+\section{Summary}
+\label{sec:abstractions-summary}
+So far, we've seen three abstractions commonly used in Haskell: the monoid, the functor, and the
+monad. There are a few other abstractions that we will cover at a later point, but these three will
+get you the majority of the way to Haskell fluency.
+
+Recall that we started by defining a monoid as follows: 
+\begin{definition}
+A \newterm{monoid} is some set $M$ of objects along with a binary operator $\diamond :: M \to M \to M$
+such that:
+\begin{itemize}
+    \item There exists some identity element, $e \in M$, such that for any $m \in M$, combining $e$
+        with $m$ using $\diamond$ (on either side) does nothing to $m$:
+        \[e \diamond m = m \diamond e = m.\]
+    \item The binary operator $\diamond$ is associative: for any $a, b, c \in M$,
+        \[a \diamond (b \diamond c) = (a \diamond b) \diamond c).\]
+        In other words, grouping which $\diamond$ operator gets computed first does not matter
+        (although order of operands can matter!).
+\end{itemize}
+\end{definition}
+Whenever we had a mathematical abstraction that defined some set (such as the monoid $M$), we could
+describe the set as a type in Haskell, and describe the abstraction on the set as a typeclass.
+The resulting typeclass is (unsurprisingly) called \inline{Monoid} in Haskell, and is defined as
+follows:
+\begin{haskell}
+class Monoid a where
+  -- Identity of 'mappend'
+  mempty  :: a
+
+  -- An associative operation
+  mappend :: a -> a -> a
+
+  -- Fold a list using the monoid.
+  -- For most types, the default definition for 'mconcat' will be
+  -- used, but the function is included in the class definition so
+  -- that an optimized version can be provided for specific types.
+  mconcat :: [a] -> a
+  mconcat = foldr mappend mempty
+
+-- Infix version of mappend
+(<>) = mappend
+\end{haskell}
+Note that \inline{mconcat} is actually part of the class, although it has a default definition
+defined in terms of \inline{mappend} and \inline{mempty}. As a result, instances of the
+\inline{Monoid} class need only to define those two primitives.
+
+The next abstraction we covered in this chapter was the \inline{Functor}. Although we could give a
+similar mathematical definition and translate it into Haskell, the mathematics is out of the scope
+of this chapter, so we can skip directly to the typeclass:
+\begin{haskell}
+class  Functor f  where
+  fmap        :: (a -> b) -> f a -> f b
+
+  -- Replace all locations in the input with the same value.
+  -- This may be overridden with a more efficient version.
+  (<$)        :: a -> f b -> f a
+  (<$)        =  fmap . const
+
+(<$>) :: (a -> b) -> f a -> f b
+(<$>) = fmap
+\end{haskell}
+The \inline{Functor} class Haskell uses defines an extra operation, \inline{<\$}. This operation
+simply replaces the contents of the functor with a new value; thus, \inline{3 <\$ Just "hi" == Just 3}.
+For historical reasons, the similar operator \inline{<\$>} is exported from
+\inline{Control.Applicative}, even though it is quite idiomatic to use it with any \inline{Functor}.
+
+Once we'd seen a few functors, we looked at the workhorse of abstractions in Haskell --- the
+\inline{Monad} typeclass. Like \inline{Functor} and \inline{Monoid}, the \inline{Monad} typeclass
+includes a few bits we haven't previously discussed:
+\begin{haskell}
+class  Monad m  where
+  -- Sequentially compose two actions, passing any value produced
+  -- by the first as an argument to the second.
+  (>>=)       :: m a -> (a -> m b) -> m b
+
+  -- Sequentially compose two actions, discarding any value produced
+  -- by the first, like sequencing operators (such as the semicolon)
+  -- in imperative languages.
+  (>>)        :: m a -> m b -> m b
+
+  -- | Inject a value into the monadic type.
+  return      :: a -> m a
+
+  -- Fail with a message.  This operation is not part of the
+  -- mathematical definition of a monad, but is invoked on pattern-match
+  -- failure in a 'do' expression.
+  fail        :: String -> m a
+
+  -- Default definitions!
+  m >> k      = m >>= \_ -> k
+  fail s      = error s
+\end{haskell}
+In order to implement an instance of \inline{Monad}, we need to define \inline{>>=} and
+\inline{return}. The typeclass also contains \inline{>>} (which is like \inline{>>=} but discards
+any value produced by its input) and \inline{fail}, which is used on pattern match failures.
+However, these are given default definitions defined in terms of \inline{>>=} and \inline{error}, so
+they do not need to be implemented to make something into a \inline{Monad}.
+
+When discussing monoids, we briefly touched on the fact that the list data type \inline{[]} forms a
+free monoid. Given any type \inline{a}, the \inline{[]} type can turn it into a monoid, since
+\inline{[a]} (for all \inline{a}) is a monoid using \inline{++} as the binary operator and
+\inline{[]} (empty list) as the identity. However, lists satisfy another fancy property --- they are
+the \inline{minimal} type that can turn any \inline{a} into a monoid; lists have exactly enough
+structure to turn the \inline{a} into a monoid, but no other structure. It turns out that there is
+an analogue for free monoids in the land of monads, called (unsurprisingly) \newterm{free monads}.
+Just like lists preserve the structure of monoidness and can turn any data type into a monoid, free
+monads preserve the structure of monadness (and \inline{do} notation) and can turn (almost) any data
+type into a monad. Free monads are a fairly advanced topic, so we will put them aside for the time
+being and return to them in a later chapter.

@@ -1,0 +1,49 @@
+Section: What is abstraction
+- Computer abstractions (other languages)
+- Math abstractions
+- Introduce a group
+- Haskell abstractions: in between computer and math
+- Show haskell typeclass for group
+
+Section: Monoids
+- Introduce idea using + and ++
+- What is a monoid (introduce laws)
+- Examples:
+    - Num a => Sum a, Product a (explain why different)
+    - Free monoid: []
+    - Bool, in the form of All and Any
+    - Maybe a (lift semigroup)
+    - Ordering monoid
+    - First, Last
+- Mention semigroups and the package that provides them
+- Finger trees and monoids example
+
+Section: Functors
+-  Introduce idea using map for lists and a new treeMap function. Generalize to functor.
+- Examples:
+    - Maybe, Either, (a, b)
+    - (->)
+-  Functor laws
+-  Example of invalid functor (take head of list?)
+-  Use <$>
+
+Section: Monads
+-  Start by writing triple headMay: using cases and using functor definition of Maybe
+-  Introduce idea of sequencing with return and processWith
+-  Rewrite headMay example
+-  Write example of list monad (cross product)
+-  Rewrite with return and processWith
+-  Introduce monad typeclass
+-  Rewrite examples using >>=
+-  Introduce do notation
+-  Rewrite examples using do notation
+-  Write randomness monad
+-  Monad laws: show that they hold for some of the above, come up with counterexample for bad monad (random that steps with return?)
+-  One or two things from Control.Monad (sequence, replicateM?)
+-  pattern matching with fail (and do notation)
+-  pattern matching example using Maybe to parse something
+
+Section: Summary
+- restate three typeclasses with laws
+- restate each using math notation
+- mention free monads (related to free monoids)

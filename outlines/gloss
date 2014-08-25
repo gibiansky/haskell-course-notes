@@ -1,0 +1,26 @@
+Games with Gloss:
+- Goal: working game of pong
+- Set up:
+    - What is cabal?
+    - Create your first Haskell package
+    - Create your first haskell sandbox
+    - Fetch dependencies into sandbox
+    - Build and run
+- Gloss:
+    - Library overview
+    - Building our app:
+        - Draw some things
+        - Add a data structure to hold game state, refactor drawing
+        - Note about haddock syntax
+        - Animate balls flying
+        - Simulate balls flying
+        - Add collisions
+        - Add detecting game over
+        - Switch to 'play'
+        - Handle user input: up, down
+        - Handle user input: quit
+        - Handle user input: pause, unpause
+- Final steps:
+    - Generating documentation
+    - Packaging and uploading to hackage
+    - Note about documentation on hackage being auto-generated

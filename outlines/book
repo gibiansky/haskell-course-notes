@@ -1,0 +1,35 @@
+Outline: Modern Haskell
+=======
+Part 1. Introduction to Haskell
+    - Chapter 1: Syntax, data structures, pattern matching, functions, recursion, laziness.
+    - Chapter 2: Application: Games with Gloss; Intro to Cabal
+    - Chapter 3: Typeclasses.
+    - Chapter 4: Abstractions (Monoids, Functors, Monads).
+    - Chapter 5: Haskell Ecosystem (ghc, cabal, haddock, hlint, ghc-mod, hdevtools, ihaskell)
+
+Part 2. Haskell in Practice
+    - Chapter 6: Common Monads (R, W, S, ST, IO, [], Maybe, Cont)
+    - Chapter 7: Monad Transformers
+    - Chapter 8: Applicative Functors
+    - Chapter 9: Application: Parsing with Parsec (and Aeson?)
+    - Chapter 10: Application: Drawing with Diagrams
+
+Part 3. Theory of Haskell
+    - Chapter 11: Category Theory for Haskell
+    - Chapter 12: Free Monads (and a pure model of IO).
+    - Chapter 13: Lenses (example: update pong game).
+    - Chapter 14: Application: HTML with Lenses (parsing html)
+    - Chapter 15: Advanced Abstractions (arrows, co-monads, free applicatives)
+    - Chapter 16: Type-Safe Programming (Phantom params, GADTs, dependently typed programming, type families)
+    - Chapter 17: Beyond the Type System (liquidhaskell, generating haskell from Coq)
+
+Part 4. Application Case Studies
+    - Chapter 19: Functional Reactive Programming
+    - Chapter 20: Streaming IO and Data Processing (iteratee, iostreams, conduit, pipes)
+    - Chapter 21: Numerical Programming with Haskell
+
+Part 5. Making the Most of GHC
+    - Chapter 22: Syntax Extensions (View Patterns, Pattern Synonyms)
+    - Chapter 23: Optimization and Implemnetation (primmops, GHC optimization, rewrite rules)
+    - Chapter 24: Metaprogramming (Template Haskell, Quasiquotes, Generics)
+    - Chapter 25: FFI - Using External Libraries.
