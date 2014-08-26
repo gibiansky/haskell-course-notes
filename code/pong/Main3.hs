@@ -1,7 +1,6 @@
 module Main(main, PongGame(Game, player2)) where
 
 import Graphics.Gloss
-import Graphics.Gloss.Interface.Pure.Game
 
 width, height, offset :: Int
 width = 300
@@ -14,57 +13,11 @@ window = InWindow "Pong" (width, height) (offset, offset)
 background :: Color
 background = black
 
--- | Number of frames to show per second.
-fps :: Int
-fps = 60
-
-type Radius = Float
-type Position = (Float, Float)
-
--- | Given position and radius of the ball, return whether a collision occurred.
-wallCollision :: Position -> Radius -> Bool
-wallCollision (_, y) radius = topCollision || bottomCollision
-  where
-    topCollision    = y - radius <= -fromIntegral width / 2
-    bottomCollision = y + radius >=  fromIntegral width / 2
-
-wallBounce :: PongGame -> PongGame
-wallBounce game = game { ballVel = (vx, vy') }
-  where
-    -- Radius. Use the same thing as in `render`.
-    radius = 10
-
-    -- The old velocities.
-    (vx, vy) = ballVel game
-
-    vy' = if wallCollision (ballLoc game) radius
-          then 
-             -- Update the velocity.
-             -vy
-           else
-            -- Do nothing. Return the old velocity.
-            vy
-
 main :: IO ()
-main = play window background fps initialState render handleKeys update
-
-
--- | Respond to key events.
-handleKeys :: Event -> PongGame -> PongGame
-
--- For an 's' keypress, reset the ball to the center.
-handleKeys (EventKey (Char 's') _ _ _) game =
-  game { ballLoc = (0, 0) }
-
--- Do nothing for all other events.
-handleKeys _ game = game
-
-
--- | Update the game by moving the ball.
--- Ignore the ViewPort argument.
-update :: Float -> PongGame -> PongGame
-update seconds = const (error "Player 1 wins") . wallBounce . moveBall seconds
-
+main = animate window background frame
+  where
+    frame :: Float ->  Picture
+    frame seconds = render $ moveBall seconds initialState
 
 -- | Update the ball position using its current velocity.
 moveBall :: Float    -- ^ The number of seconds since last update
@@ -118,7 +71,7 @@ render game =
 initialState :: PongGame
 initialState = Game
   { ballLoc = (-10, 80)
-  , ballVel = (10, -60)
+  , ballVel = (10, -30)
   , player1 = 40
   , player2 = 40
   }
