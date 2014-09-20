@@ -1,10 +1,10 @@
 Outline: Modern Haskell
 =======
 Part 1. Introduction to Haskell
-    - Chapter 1: Syntax, data structures, pattern matching, functions, recursion, laziness.
-    - Chapter 2: Application: Games with Gloss; Intro to Cabal
+    * Chapter 1: Syntax, data structures, pattern matching, functions, recursion, laziness.
+    * Chapter 2: Application: Games with Gloss; Intro to Cabal
     - Chapter 3: Typeclasses.
-    - Chapter 4: Abstractions (Monoids, Functors, Monads).
+    * Chapter 4: Abstractions (Monoids, Functors, Monads).
     - Chapter 5: Haskell Ecosystem (ghc, cabal, haddock, hlint, ghc-mod, hdevtools, ihaskell)
 
 Part 2. Haskell in Practice

@@ -944,6 +944,8 @@ Add the ability to pause and unpause the game using the 'p' key. You'll need to 
 Add the ability to move the paddles using 'w' and 's' (up and down for the left paddle) and the up
 and down arrow keys for the right paddle. To do this, add cases to `handleKeys` for each of these.
 You will need to look at the `SpecialKey` type to find out how to detect up and down arrow keys.
+
+Make sure that the paddles cannot move out of bounds.
 ****
 
 [[exercise-4]]
@@ -957,6 +959,26 @@ real program, we'll simply crash the program with an error message to quit.
 For this exercise, detect when the game has ended. You will want to do this in `update`. If the
 game has ended, you should return `error "Player 1 wins"` or `error "Player 2 wins"` as the new
 `PongGame`. The game will then crash, printing the error message to the console.
+****
+
+[[exercise-5]]
+.Exercise 5: Press and Hold
+****
+If you've completed Exercise 3, you should be able to press keys and have the paddles move.
+However, you have to keep pressing and releasing the keys repeatedly in order to get long-range
+movement, because Gloss only calls `handleKeys` when the key is pushed down and up, and not when
+you hold the key down. Fix this by adding fields to the `PongGame` data structure to record the
+state of the keys you care about; then, change `update` to use those fields to move the paddles.
+Test this by making sure that you can press and hold a key to make a paddle go to the edge of the
+screen.
+****
+
+[[exercise-6]]
+.Exercise 6: Pong AI
+****
+Remove the first player controls and replace them with an AI. Your AI should move one of the
+paddles towards the ball. You may need to add fields to `PongGame` in order to do this; the
+majority of your logic changes should be to `update`.
 ****
 
 == Final Steps

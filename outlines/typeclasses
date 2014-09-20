@@ -1,0 +1,14 @@
+Typeclasses:
+    - Why do we need typeclasses?
+    - How do they work?
+
+Common:
+    - Show
+    - Eq
+    - Ord
+
+Numeric stack:
+    - Num
+    - Fractional
+    - Floating
+

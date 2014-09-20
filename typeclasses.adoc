@@ -1,0 +1,250 @@
+:source-highlighter: pygments
+:source-language: haskell
+:icons: font 
+:toc: left
+
+In this guide, we'll learn about how another way Haskell handles polymorphism. We'll look at a few
+of the uses cases for this sort of polymorphism.
+
+== Advanced Polymorphism
+
+Let's begin by considering the polymorphism we've already seen and seeing what polymorphic type
+signatures for functions tell us about the functions.
+
+=== Polymorphism via Type Variables 
+
+Suppose you'd like to create a `reverse` function which reverses the order of a list:
+
+[source]
+----
+reverse [1, 2, 3] == [3, 2, 1]
+reverse "abc" == "cba"
+----
+
+This function should compltely ignore the elements of the list. It should not evaluate them or use
+them in any way. It should work for lists of _any_ type of element. All of these are enforced by
+the type signature of `reverse`:
+
+[source]
+----
+-- | Reverse the elements in a list.
+reverse :: [a] -> [a]
+----
+
+Since the element type is just `a` (a type variable), `reverse` cannot make any assumptions about
+it. The same exact code must work for `Int`, `Char`, `String`, `Handle` (a file handle), or any
+other type.
+
+These sorts of type signatures help eliminate many bugs and can help you figure out what code you
+want to write. However, while sometimes we can operate on _any_ type variable `a`, sometimes we'd
+like to have some constraints on what `a` can be. For example, consider a hypothetical function
+`elem`, which returns whether or not a some element is in a list. Could `elem` have the following
+type signature?
+
+[source]
+----
+-- | Return whether an element exists in a list.
+elem :: a -> [a] -> Bool
+elem element list = ...
+----
+
+A brief examination of the type signature should make it clear that, no, a working `elem` function
+_cannot_ have that type signature. A function with that type signature cannot check whether one
+value of type `a` is equal to another value of type `a`! Thus, there's no way that it could check
+that the element is equal to the values in the list. We could, however, create the following
+function, which is `elem` specialized to `Int` values:
+
+[source]
+----
+-- | Return whether an element exists in a list.
+elemInt :: Int -> [Int] -> Bool
+elemInt element list = ...
+----
+
+We could implement a valid `elemInt`, because we know we can compare `Int` values.
+
+.Exercise 1: Implement `elemInt`
+****
+As an exercise, go ahead and implement `elemInt`. Make sure the following test cases pass:
+
+[source]
+----
+elemInt 0 []                 == False
+elemInt (error "Nothing") [] == False
+elemInt 3 [10, 20, 30]       == False
+elemInt 3 [1, 2, 3]          == True
+----
+****
+
+We could also implement `elemChar`, `elemString`, `elemFloat`, and many other versions of `elem`.
+In order to implement `elem`, however, we need to have a way to write a type signature that allows
+polymorphism over the list element type (via a type variable `a`) but _also_ requires that we can
+somehow compare values of type `a` for equality. Haskell provides *typeclasses* as a mechanism for
+constrained polymorphism.
+
+.Why We Can't `==` On Any Type
+****
+In some languages, _all_ types will support the equality operator. For example, in C or Java, two
+values of the same type may _always_ be compared using `==`. This comparison tests for
+pointer or reference equality, not the fact that the underlying objects are equal. (If you've
+programmed in Java, you will have been taught early on that you must use `.equals()` for objects if
+you mean to compare their values, because `==` will only check for reference equality; this can be a
+cause of many subtle bugs.)
+
+Haskell does not allow testing for equality by pointer comparison for a variety of reasons. (Among
+others, pointer comparison prevents some optimizations and breaks expected language semantics in
+some cases.) Instead of using pointer comparions, `==` will always compare the values of objects. 
+
+We cannot have `==` work on all types because some objects might not _have_ a meaningful comparison
+operator. For example, what does it mean to check if two file handles are equal? Are the equal if
+they have the same filename?  If they have the same filename and point to the same location on disk?
+If they point to the same node/location in a file system but have different names (due to hard
+links), are they equal?
+
+As another example, consider equality of functions of type `Int -> Int` -- it is impossible to check
+if two functions are equal without running them on all possible inputs, which would take forever.
+Thus, the `==` operator only makes sense and only exists for a subset of all types in Haskell.
+****
+
+=== Typeclasses
+
+Typeclasses are a mechanism for overloading the meaning of names (values and functions) for
+different types. This allows us to write code that works on multiple types while using values of
+those types -- for example, we can use the `==` operator to test many different types for equality.
+The `==` function is defined as part of the `Eq` typeclass, which could be written as follows:
+
+[source]
+----
+class Eq a where <1>
+  (==) :: a -> a -> Bool <2>
+----
+<1> This line declares the typeclass. `class` and `where` are keywords, and between them you put
+the name of the class (`Eq`) and a type variable (`a`) that will represent the `Eq`-able type for
+the remainder of a declaration. `Eq` is the name of a constraint on types: in the remainder of the
+declaration, we write the type signatures of values and functions that must be implemented for a
+type for it to be part of the `Eq` typeclass. The type variable `a` is used in those type
+signatures.
+<2> This type signature is the declaration of a _method_ of the typeclass. (Be very careful --
+typeclasses and typeclass have very little to do with object-oriented classes and methods, although
+the terminology may be decieving and there may be some surface similarities.) With this type
+signature, we state that in order to create an _instance_ of the `Eq` typeclass for some type
+we must write a function called `==` that satisfies the given type signature. For example, in
+order to create an instance of `Eq` for `Int`, we would have to write a function with type
+signature `Int -> Int -> Bool` which tests two integers for equality.
+
+Haskell already defines instances of `Eq` for all commonly used data types, which means you can use
+`==` on common types such as `Int`, `String`, `[Int]`, `Maybe String`, and most others defined in
+the standard library. For the sake of understanding typeclasses, let's define our own tree data
+structure:
+
+[source]
+----
+-- | A binary tree containing Int values.
+data IntTree = Leaf Int | Tree Int IntTree IntTree
+----
+
+If we tried to write code that used `==` on `IntTree` values, GHC would spit out an error message
+complaining about the lack of the `Eq IntTree` instance. To satisfy GHC, we can write an instance
+of `Eq` for `IntTree`:
+
+[source]
+----
+instance Eq IntTree where <1>
+  Leaf x == Leaf x' = x == x' <2>
+  Tree x left right == Tree x' left' right' = 
+    x == x' && left == left' && right == right'
+  _ == _ = False <3>
+----
+<1> This line is the beginning of the instance declaration and generally mirrors the class
+declaration. In this case, we're declaring an instance `Eq IntTree`, so you can replace all
+occurrences of the `a` type variable in the original class with `IntTree`.
+<2> This is the _definition_ of the `==` operator. To the left of the `=`, we have match the
+arguments to `==` with two patterns, `Leaf x` and `Leaf x'` and return `True` if and only if `x ==
+x'`. Note that `x` and `x'` are of type `Int`, which means we can use `==` on them, because we have
+the instance `Eq Int` provided for us by Haskell.
+<3> In order to make sure that `==` works for all `IntTree` values, we provide a fall-through
+pattern match which will match anything the previous patterns haven't. Since the previous patterns
+tested leaves against leaves and branches against branches, we know that this pattern is _only_
+matched if the structures of the trees are different (there's a leaf in one tree where there is a
+branch in another), so we return `False` because these trees cannot be equal.
+
+.Exercise 2: `Eq IntList`
+****
+Consider the following linked list data structure:
+
+[source]
+----
+data IntList = Nil | Cons Int IntList
+----
+
+Implement the `Eq` typeclass for the `IntList` type. Then, verify that the following code works and
+typechecks:
+
+[source]
+----
+value1 :: IntList
+value1 = Cons 3 (Cons 10 Nil)
+
+value2 :: IntList
+value2 = Nil
+
+main = print (value1 == value1,
+              value2 == value2,
+              not (value1 == value2))
+----
+****
+
+In both the example above (`IntTree`) and the exercise (`IntList`), you must use recursion to
+implement `==`. In addition to recursing in the definition of `==`, you must eventually invoke the
+`==` for the `Int` type, to compare the values at the leaves of the tree and nodes of the linked
+list. In the line `Leaf x == Leaf x' = x == x'`, the usage of `==` on the right hand side refers to
+`==` for `Int` values; this is _not_ a case of recursion, because we aren't calling `==` for
+`IntTree` values.
+
+In addition to defining their required methods, typeclasses can define auxiliary methods with
+default implementations. For example, the `Eq` typeclass is actually defined as follows:
+
+[source]
+----
+class Eq a where
+  (==) :: a -> a -> Bool
+
+  (/=) :: a -> a -> Bool <1>
+  x /= y = not $ x == y
+----
+<1> The `(/=)` method is not *required* by the `Eq` typeclass. If an implementation of `/=` is not
+provided, the default implementation `not $ x == y` is used. Instances are allowed to provide their
+own custom implementations of `/=`; custom implementations are often used to provide more efficient
+implementations of typeclass methods.
+
+Many of the typeclasses in the standard library have several methods but only require one or two of
+them for a complete implementation.
+
+
+== Common Typeclasses
+
+Typeclasses are fundamental to the Haskell language, and the standard library ships with several
+very commonly used typeclasses. In this section, we'll go over several of the simpler typeclasses;
+we'll see how they're defined, how they're used, and how to write simple instances for them. We
+skip the `Eq` typeclass, as it is reviewed in the previous section.
+
+=== Ord
+=== Show
+=== Read
+=== Enum
+=== Bounded
+
+== Numeric Typeclasses
+
+- `Num`
+- `Floating`
+- `Integral`
+- `RealFrac`
+- `RealFloat`
+- `Fractional`
+- `Real`
+- Numeric types: Float, Double, Rational, Int, Integer, CFloat/CInt
+- Defaulting
+- Table of conversions
+
+
