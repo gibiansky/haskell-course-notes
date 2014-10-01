@@ -791,15 +791,158 @@ constructors to order their values.
 
 == Numeric Typeclasses
 
-- `Num`
-- `Floating`
-- `Integral`
-- `RealFrac`
-- `RealFloat`
-- `Fractional`
-- `Real`
-- Numeric types: Float, Double, Rational, Int, Integer, CFloat/CInt
-- Defaulting
+Typeclasses are fundamental to the way that Haskell handles numbers. Haskell has about a half-dozen
+different numeric types (and more provided by libraries), and then divides functions operating on
+those types among a half-dozen different numeric typeclasses. When you write numerical code, then,
+you use whatever functions you need and choose the numeric typeclasses they require. The code you
+write then works for all possible applicable numeric types.
+
+Some of the commonly used Haskell _types_ are the following:
+
+- `Float`: A standard IEEE 32-bit floating point number.
+- `Double`: A standard IEEE 64-bit floating point number.
+- `Rational`: A rational number represented as a fraction with arbitrary precision integer
+  numerators and denominators.
+- `Integer`: An arbitrary precision integer.
+- `Int`: A 29-bit machine integer.
+- `CFloat`, `CInt`, `CDouble`, etc: Types used for communicating with C libraries through the
+  foreign function interface (FFI).
+
+Next, we look at the typeclasses that provide the functions that let us operate on these functions.
+The most common and base typeclass is `Num`:
+
+[source]
+----
+class Num a where
+  (+) :: a -> a -> a
+  (*) :: a -> a -> a
+  (-) :: a -> a -> a
+  negate :: a -> a
+  abs :: a -> a
+  signum :: a -> a
+  fromInteger :: Integer -> a
+----
+
+The binary operators `+`, `*`, and `-` do exactly what you expect. `negate` multiplies a number by
+negative one (or otherwise negates it); `abs` takes the absolute value of the number; `signum`
+returns either positive or negative one, depending on the sign of its argument. Finally,
+`fromInteger` can be used to convert from any arbitrary precision integer to another type of `Num`.
+Whenever you need to convert an `Integer` to any other numeric type, use `fromInteger`.
+
+The `Num` typeclass only includes `+`, `*`, and `-`; it does not include `/` (division), because
+some numeric types do not support standard division. For example, you cannot divide two `Int`
+values to get another `Int` value without some sort of rounding. In order to support rounding, a
+numeric type must implement the `Fractional` typeclass:
+
+[source]
+----
+class Num a => Fractional a where
+  (/) :: a -> a -> a
+  recip :: a -> a
+  fromRational :: Rational -> a
+----
+
+The `Fractional` typeclass has `Num` as a superclass (it requires `Num a` in order to implement
+`Fractional a`). `Fractional` allows you to divide using `/` and take the reciprocal of a number
+using `recip`. Finally, just like we can use `fromInteger` to convert arbitrary precision integers
+to `Num` values, we can use `fromRational` to convert from arbitrary precision _fractions_ (ratios of
+arbitrary precision integers) to any `Fractional` type.
+
+Like `Fractional` supports numbers that can do division, `Integral` supports various integer
+operations:
+
+[source]
+----
+class (Real a, Enum a) => Integral a where
+  quot :: a -> a -> a
+  rem :: a -> a -> a
+  div :: a -> a -> a
+  mod :: a -> a -> a
+  quotRem :: a -> a -> (a, a)
+  divMod :: a -> a -> (a, a)
+  toInteger :: a -> Integer
+----
+
+The meanings of these should be somewhat self-explanatory. `quot` takes the quotient of two
+numbers, `rem` takes the remainder, `div` does integer division (truncated towards negative
+infinity), `mod` takes the integer modulus. `quotRem` and `divMod` do `quot`/`rem` and `div`/`mod`
+together. Finally, `toInteger` converts _from_ an `Integral` type to an `Integer`, since `Integer`
+is meant to be the "most general" integer type.
+
+The `Integral` typeclass has two superclasses: `Real` and `Enum`. We've already seen `Enum` in the
+previous section. The `Real` typeclass provides only `toRational`, which returns an exact fraction
+that represents the `Real` value:
+
+[source]
+----
+class (Num a, Ord a) => Real a where
+  toRational :: a -> Rational
+----
+
+The `Real` typeclass has `Num` and `Ord` as a superclass, so by transitivity `Integral` also
+requires both of these.
+
+For real numbers that are represented as floating point numbers, Haskell provides the `Floating`
+typeclass which provides all the traditional transcendental functions:
+
+[source]
+----
+class Fractional a => Floating a where
+  pi :: a
+  exp :: a -> a
+  sqrt :: a -> a
+  log :: a -> a
+  (**) :: a -> a -> a
+  logBase :: a -> a -> a
+  sin :: a -> a
+  tan :: a -> a
+  cos :: a -> a
+  asin :: a -> a
+  atan :: a -> a
+  acos :: a -> a
+  sinh :: a -> a
+  tanh :: a -> a
+  cosh :: a -> a
+  asinh :: a -> a
+  atanh :: a -> a
+  acosh :: a -> a
+----
+
+Finally, two more typeclasses provide the rest of the kitchen sink of numeric functions. For types
+that implement `Real` and `Fractional`, there is the `RealFrac` typeclass; for types that implement
+`Real` and `Floating`, there is the `RealFloat` typeclass:
+
+[source]
+----
+-- Real and Fractional.
+class (Real a, Fractional a) => RealFrac a where
+  properFraction :: Integral b => a -> (b, a)
+  truncate :: Integral b => a -> b
+  round :: Integral b => a -> b
+  ceiling :: Integral b => a -> b
+  floor :: Integral b => a -> b
+
+-- Real and floating.
+-- Functions for dealing with IEEE floating point numbers.
+class (RealFrac a, Floating a) => RealFloat a where
+  floatRadix :: a -> Integer
+  floatDigits :: a -> Int
+  floatRange :: a -> (Int, Int)
+  decodeFloat :: a -> (Integer, Int)
+  encodeFloat :: Integer -> Int -> a
+  exponent :: a -> Int
+  significand :: a -> a
+  scaleFloat :: Int -> a -> a
+  isNaN :: a -> Bool
+  isInfinite :: a -> Bool
+  isDenormalized :: a -> Bool
+  isNegativeZero :: a -> Bool
+  isIEEE :: a -> Bool
+  atan2 :: a -> a -> a
+----
+
+- Fix everything above to say which types are in each typeclass
 - Table of conversions
 
-
+=== Literals
+=== Defaulting rules
