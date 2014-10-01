@@ -229,10 +229,565 @@ we'll see how they're defined, how they're used, and how to write simple instanc
 skip the `Eq` typeclass, as it is reviewed in the previous section.
 
 === Ord
+
+Types which implement the `Ord` typeclass can be compared to each other; their values must have a
+total order imposed on them (for any values `x` and `y`, we can compare the two values and
+determine which one is greater, if any). In order to be a member of the `Ord` typeclass, a type
+must have a `compare` function which returns an ordering. In some languages (C, Java, Python) the
+compare function must return an integer which is zero if the two values are equal, a positive
+integer if the first value is greater than the second, and a negative integer if the first value is
+smaller than the second. In Haskell, orderings are instead expressed using the `Ordering` type:
+
+[source]
+----
+data Ordering = LT | EQ | GT
+----
+
+The `Ord` typeclass then has a `compare` function which takes two values and returns an `Ordering`:
+
+[source]
+----
+compare :: a -> a -> Ordering
+----
+
+In addition, the `Ord` typeclass includes a few functions that have default implementations using
+`compare` but can be overriden for efficiency, such as `<`, `>`, `max`, and `min`. The full `Ord`
+typeclass declaration is as follows:
+
+[source]
+----
+class Eq a => Ord a where
+  -- Required for implementing Ord.
+  compare :: a -> a -> Ordering
+
+  -- Functions with default implementations.
+  (>) :: a -> a -> Bool
+  x > y = compare x y == GT
+
+  (<) :: a -> a -> Bool
+  x > y = compare x y == LT
+
+  (>=) :: a -> a -> Bool
+  x >= y = compare x y == GT || compare x y == EQ
+
+  (<=) :: a -> a -> Bool
+  x <= y = compare x y == LT || compare x y == EQ
+
+  max :: a -> a -> a
+  max x y = if x > y then x else y
+
+  min :: a -> a -> a
+  min x y = if x < y then x else y
+----
+
+The `Ord` typeclass, unlike `Eq`, has a *context*. Contexts come before type declarations or
+typeclass heads and can specify that type variables implement some specific typeclass: 
+[source]
+----
+class Eq a => Ord a where ...
+----
+
+In the above declaration, the context is `Eq a`, and is separated from the typeclass *head* (which
+is `Ord a`) using a "fat arrow", `=>`. The context specifies that the type variable `a` must be a
+member of the `Eq` typeclass in order to implement the `Ord` typeclass for that variable. In this
+case, `Eq a` is required for `Ord a` because it is nonsensical to have an ordering unless we have
+equality, since clearly `compare` can be used to implement `(==)`.
+
+In general, it is wise to make sure that all instances of `Ord` follow a few rules. First of all,
+they should agree with instance of `Eq`; that is, if `x == y`, then `compare x y` should return
+`EQ`. Instances of `Ord` should also define a reasonable total order: if `compare x y == LT`, then
+`compare y x == GT`, and if `compare x y == EQ` then `compare y x == EQ` as well.
+
 === Show
+
+The `Show` and `Read` typeclasses allow types to be converted to and from strings. They are _not_
+meant for user input and output, but rather for programmer viewing and debugging. (For example, the
+`Show` instance for `String` outputs newlines as `\n` and quotes as `\"`, which makes sense for
+programmers but does not for user output.). The `Show` typeclass has three methods: `show`,
+`showsPrec`, and `showList`. 
+
+Most of the time, knowing about `show` is enough; the other two are somewhat specialized methods that
+you will rarely need to implement. `show` has the type `show :: a -> String`; it can convert any
+type `a` which implements the `Show` typeclass into a `String`. For example, in order to convert an
+integer to a string, you could write `show (1 :: Int)`; in this context, `show` would be
+specialized to `show :: Int -> String`. 
+
+For the sake of demonstration, let's create our own character-like type that can only hold uppercase As,
+Bs, Cs, as well as a special character representing non-printable character:
+
+[source]
+----
+data ABC = A | B | C | Other
+----
+
+If we want to be able to print `ABC` values, we can create a `Show` instance for it:
+
+[source]
+----
+instance Show ABC where
+  show A = "A"
+  show B = "B"
+  show C = "C"
+  show Other = "<Not printable>"
+----
+
+We can then write programs that print values of type `ABC` to standard output. The following
+program will simply print the letter "A" to the screen:
+
+[source]
+.Show1.hs
+----
+a :: ABC
+a = A
+
+main :: IO ()
+main = putStrLn (show a) <1>
+----
+<1> Instead of writing `putStrLn (show x)`, we can write `print x`. `print` is a function defined
+as `print = putStrLn . show`.
+
+For most use cases, `show` is all you need to know about the `Show` typeclass; for the sake of
+completeness, we discuss `showsPrec` and `showList`, even though these functions come up rarely in
+practice.
+
+==== Advanced Uses of Show
+
+To motivate `showsPrec`, consider the following code:
+
+[source]
+----
+main = putStrLn (show Other ++ show Other ++ show Other ++ show Other)
+----
+
+How long does this program take to run? Not very long, because we only have four Strings we're
+concatenating. However, in general, concatenating _n_ Strings can take _O(n^2)_ time, since each
+time we append a string to the end of a list, we must first traverse the entire list. If we were to
+run this program with a thousand `ABC` values instead of four, this might take quite a while due to
+this quadratic growth! This quadratic growth is the first problem that `ShowS` solves.
+
+The fundamental issue is that `Show` relies on `String` values, which take a long time to append.
+To rectify this, `showsPrec` uses a different type with the alias `ShowS`:
+[source]
+----
+type ShowS = String -> String
+----
+A `ShowS` value is a function that, when given a `String`, _prepends_ another `String` to it and
+returns the sum. The type `String` and `ShowS` are isomorphic in meaning, which we can show
+by providing conversion functions between them. We can convert a `String` into a `ShowS` by writing
+a function which prepends the given string to its input:
+
+[source]
+----
+showString :: String -> ShowS
+showString str = \next -> str ++ next
+----
+
+Converting from `String` to `ShowS` is fast. Since we don't actually do any work (we just create a
+function), we don't need to iterate over the characters, so it is done in constant time.  We can
+also convert from `ShowS` to a `String` by using the `ShowS` to prepend to an empty string:
+[source]
+----
+fromShowS :: ShowS -> String
+fromShowS prepender = prepender ""
+----
+
+Unlike `showString`, `fromShowS` is not a constant time operation. In order to prepend a string to "", the
+`ShowS` must traverse the entire string it's appending and then add "" onto the end of it. Thus,
+the runtime of `fromShowS` grows linearly with the number of characters in the output.
+
+Let's compare appending `String` values and `ShowS` values. In order to append `String` values, you
+use the `++` operator, which traverses over the first string character by character and then adds
+the second string onto the end. As you append more and more characters to a string, appends take
+longer and longer, because each append must traverse all previous characters; thus, the running
+time grows quadratically in the length of the string. In constract, in order to append `ShowS`
+values, you just use the `.` function composition operator. If you have a `ShowS` which prepends the
+string "x" and a `ShowS` which prepends the string "y", you can make a `ShowS` which prepends "xy"
+by composing your two `ShowS` values to first prepend "y" and then prepend "x". Since function
+composition is done in constant time, combining `ShowS` values only takes as long as the number of
+values you are combining.
+
+As long as `showsPrec` outputs a `ShowS` instead of a `String`, we can write code that efficiently
+concatenates the string representations of many things. Using `ShowS` yields better performance, but
+it is not as convenient as `show` for common uses, which is why `show` is included in the typeclass.
+
+The second problem that `showsPrec` solves is one of parenthesizing. For example, if we write `show (Just [1, 2, 3])`, we 
+expect the result to be `Just [1, 2, 3]`; however, if we write `show (Just (Just [1, 2, 3]))`, we
+expect the result to be `Just (Just [1, 2, 3])`. Consider the following attempt at an
+implementation:
+[source]
+----
+instance Show a => Show (Maybe a) where <1>
+  show Nothing = "Nothing"
+  show (Just x) = "Just " ++ show x
+----
+<1> This example uses instance contexts; see Exercise 1 for more information on this.
+
+If you pay attention to what this example does, though, you will notice that `show (Just (Just [1,
+2, 3]))` does not work! Instead of outputting what we want, it outputs `Just Just [1, 2, 3]`, which
+is missing a set of parentheses.
+
+Using the type alias `ShowS`, the type of `showsPrec` for a type `a` is written as
+[source]
+----
+showsPrec :: Int -> a -> ShowS
+----
+
+The `Int` that `showsPrec` is passed is the operator precedence of the enclosing context, which is
+a number between zero and eleven. Function application has precedence ten; infix data constructors
+can have lower precedences. This integer allows the `showsPrec` implementation to decide whether or
+not to include the parentheses. The following is a proper implementation of `Show Maybe`, this time
+using `showsPrec`:
+[source]
+----
+instance Show a => Show (Maybe a) where
+  showsPrec _ Nothing = showString "Nothing"<1>
+  showsPrec precedence (Just x) = 
+    if precedence > 10 <2>
+    then showString "(Just " . showsPrec 11 x . showString ")" <3>
+    else showString "Just " . showsPrec 11 x <4>
+----
+<1> `showString` is the same convenience function we defined earlier, of type `showString :: String -> ShowS`.
+<2> 10 is the precedence of function application, so a precedence context greater than means that this
+value is being printed as an argument to some function and thus we need parentheses.
+<3> We use `.` to concatenate `ShowS` values (instead of `++`, which is only used for `String` values).
+<4> Since the `Just` constructor looks like a function, we must print the argument to it in a
+precedence context greater than function application; thus, we pass 11 as the precedence context to
+`showsPrec` for whatever comes after the `Just`.
+
+`showsPrec` can be thought of as a low-level interface to the capabilities of the `Show` typeclass.
+Although the complexity may seem daunting, it is necessary for printing all the possible values
+that you can define in Haskell.
+
+The last method of the `Show` typeclass is `showList`:
+
+[source]
+----
+-- Give the method a specialized way of showing lists of values.
+showList :: [a] -> ShowS
+----
+
+The `showList` method can be used to override the default of printing lists with square brackets
+and commas. This is rarely necessary, but is used by the Haskell standard library to print `String`
+values using quotes instead of square brackets and to omit the commas.
+
+[[exercise-1]]
+.Exercise 1: `Show` for lists
+****
+Consider the following linked list data type, isomorphic to Haskell's `[a]`:
+
+[source]
+----
+data List a = Nil | Cons a (List a)
+----
+
+Implement the `Show` typeclass for `List a`, provided that `a` implements `Show`. To do so, fill
+in the following template:
+
+[source]
+----
+instance Show a => Show (List a) where
+  show xs = ...
+----
+
+This code has another example of a *context*, this time used in an instance instead of a class
+declaration. The context `Show a` with the instance *head* `Show [a]` says that for any type `a`
+that implements `Show`, `[a]` implements `Show` (with the implementation provided below).
+
+Your implementation of `show` should act identically to `show` for Haskell lists, but use `{}`
+instead of `[]`. For example, `show Nil` should be `{}` and `show (Cons 'X' (Cons 'Y' Nil))` should
+be `{'X', 'Y'}`.
+****
+
+[[exercise-2]]
+.Exercise 2: `showList` for Characters
+****
+Recall the data type and `Show` instance we defined earlier:
+
+[source]
+----
+data ABC = A | B | C | Other
+
+instance Show ABC where
+  show A = "A"
+  show B = "B"
+  show C = "C"
+  show Other = "<Not printable>"
+----
+
+Modify this instance to use `showsPrec`. You can use `showString` to do so.
+
+Once you have rewritten this instance to use `showsPrec`, add an implementation for `showList` to
+it such that lists of `ABC` values are printed surrounded by vertical bars, without commas, and skipping
+`Other` values. For example, you should have `showList [A, B, C, Other, C, B]` return a string
+containing `|ABCCB|`.
+****
+
 === Read
+
+The opposite of the `Show` typeclass is the `Read` typeclass. While `Show` is used to convert
+Haskell data structures to Strings, `Read` provides methods to parse Strings into Haskell data
+structures. Since converting Strings to data structures requires fairly complex parsing, the
+methods of the `Read` typeclass are actually almost never used. However, the Haskell `Prelude`
+provides the `read` function:
+
+[source]
+----
+read :: Read a => String -> a
+----
+
+This is _not_ a method of the `Read` typeclass, but it requires that the type that's being output
+implements `Read`. To use `read`, just pass it a `String`, as in the following example:
+
+[source]
+.Read1.hs
+----
+value :: Int
+value = read "100"
+
+main :: IO ()
+main = print value
+----
+
+Since the output of `read` is a type variable, it is polymorphic in its output. This can often
+cause problems, as GHC's type inference engine will be unable to determine exactly what type is
+meant to be read. For example, compiling the following program will yield an error, complaining
+that the type variable `a` is ambiguous:
+
+[source]
+----
+main :: IO ()
+main = print $ read "100"
+----
+
+The type of `read "100"` could be `Int`, `Float`, `Bool`, or anything else, and this program would
+typecheck just fine. If the value is unable to be parsed, the error will happen at runtime, not at
+compile time. In order to avoid the ambiguous type, you can annotate the `read` expression with an
+explicit type:
+
+[source]
+----
+main :: IO ()
+main = print (read "100" :: Int)
+----
+
+This program should compile fine, and, when run, will print 100 to the console.
+
+.Reading Safely with `readMay`
+****
+If you try to `read` a string that isn't valid, you'll get a runtime error. For example, the
+following program will fail:
+
+[source]
+----
+main = print (read "True" :: Int)
+----
+
+The error message will complain about not being able to find a parse:
+
+----
+*** Exception: Prelude.read: no parse
+----
+
+By using `read`, we've introduced a potential error which is not represented in any way in the type
+of `read`; in fact, the purpose of the type system is to eliminate errors like this! To avoid this,
+you can use the `readMay` function from the `Safe` module (from the package `safe` made for Safe
+Haskell):
+
+[source]
+----
+readMay :: String -> Maybe a
+----
+
+Instead of erroring and crashing like `read` does, `readMay` will return `Nothing` if it fails, and
+`Just` the result if it succeeds. Using `readMay` can introduce a bit of complexity into your
+code base due to the overhead of managing errors, but makes your code typesafe and avoids unexpected
+crashes, yielding a very robust code base. In general, favor uses of `readMay` over `read` whenever
+possible.
+****
+
+For most programmers, knowing how to use `read` is enough; however, there may be a time where you
+need to write a custom implementation of the `Read` typeclass for one of your own data types.
+Writing a `Read` parser is a fairly complex task that requires a little more background than we are
+assuming in this guide, so we will delay that topic until the guide about parsing.
+
 === Enum
+
+Haskell has a special syntax for enumerated lists. For example, when working with integers, all of
+the following lists are valid:
+
+[source]
+----
+-- A list of integers between 1 and 10, inclusive on both sides.
+small :: [Int]
+small = [1..10]
+
+-- A list of odd integers between 1 and 10 (inclusive).
+smallOdd :: [1,3..10]
+
+-- An infinite list of all positive integers.
+positives :: [Int]
+positives = [1..]
+
+-- An infinite list of even positive integers.
+positiveEven :: [Int]
+positiveEven = [2, 4..]
+----
+
+This syntax is very commonly used with integers; however, it also works with `Char` and `Float`
+values:
+
+[source]
+----
+-- The list containing 0.0, 0.1, 0.2, and so on until 1.0.
+tenths :: [Float]
+tenths = [0.0, 0.1 .. 1.0]
+
+-- All lowercase English letters.
+lowercase :: [Char]
+lowercase = ['a'..'z']
+----
+
+This general syntax is enabled by the `Enum` typeclass. The `Enum` typeclass has a whole suite of
+methods which describe any type that can be enumerated:
+
+[source]
+----
+class Enum a where
+  -- Compute the next element.
+  succ :: a -> a
+  -- Compute the previous element.
+  pred :: a -> a
+
+  -- Convert between integers and our enumerable type.
+  toEnum :: Int -> a
+  fromEnum :: a -> Int
+
+  -- Functions that the list syntax desugars to.
+  enumFromTo :: a -> a -> [a]
+  enumFromThenTo :: a -> a -> a -> [a]
+  enumFrom :: a -> [a]
+  enumFromThen :: a -> a -> [a]
+----
+
+The last four methods that start with `enumFrom` are used to produce the list
+syntax above. The four types of list syntax are translate directly into those methods:
+
+[source]
+----
+[1..10]     ==  enumFromTo 1 10
+[1,3..10]   ==  enumFromThenTo 1 3 10
+[1..]       ==  enumFrom 1
+[2, 4..]    ==  enumFromThen 2 4
+----
+
+Thus, if you implement the `Enum` typeclass for your own types, you can use this list syntax as well.
+
+In addition the list syntax, the `Enum` typeclass has functions for using the
+implementing type as an enumeration. In particular, the `fromEnum` and `toEnum`
+functions can be used convert between the enumerated type and the positive integers. (For example,
+in the context of ASCII characters, `fromEnum` gets the ASCII code of a character while `toEnum`
+converts it back to a `Char`.) Also, `succ` should yield the next element of the enumeration, while
+`pred` should yield the predecessor (so, for numeric types, `succ` should add one and `pred` should
+subtract one).
+
+`Enum` has many methods, but the only ones that are necessary in order to complete an instance
+definition are `fromEnum` and `toEnum`. For instance, if we had a type that could only represent
+the characters X, Y, Z, or W, we could make it enumerated as follows:
+
+[source]
+----
+data Var = X | Y | Z | W
+
+instance Enum Var where
+  fromEnum X = 0
+  fromEnum Y = 1
+  fromEnum Z = 2
+  fromEnum W = 3
+
+  toEnum 0 = X
+  toEnum 1 = Y
+  toEnum 2 = Z
+  toEnum 3 = W
+  toEnum _ = error "Invalid value"
+----
+
+We can then use any methods of the `Enum` class, including the syntactic sugar for list ranges. For
+example, we could write `[X .. W]`, which evaluates to `[X, Y, Z, W]`. (The spaces around the dots
+are syntactically important; without them the parser gets confused.)
+
 === Bounded
+
+The `Bounded` typeclass is the simplest of all of the typeclasses discussed in this section:
+
+[source]
+----
+class Bounded a where
+  -- A lower bound on all values.
+  minBound :: a
+
+  -- An upper bound on all values.
+  maxBound :: a
+----
+
+Strangely enough, though, `Ord` is not required by `Bounded`, even though `Bounded` is making a
+statement about the ordering of values. This is because `Bounded` only requires that `minBound` is
+less than all elements and `maxBound` is greater than all elements; however, if `Bounded a` required
+`Ord a`, then it would also require there to be a total order on _all_ the possible values of type
+`a`. (For example, if there are two values `x, y :: a`, and both are above `minBound` and
+below `maxBound`. In that case, you could implement `Bounded`, even if the expression `compare x y`
+made no sense because `x` and `y` themselves were not directly comparable.)
+
+For any type `a` which is both `Bounded` and `Enum`, the `Enum` methods should respect the bounds.
+For instance, `succ maxBound` and `pred minBound` should both result in runtime errors, since there
+should be nothing outside of those bounds. Similarly, `enumFrom` and `enumFromThen` should not go
+beyond (above or below) the `maxBound` or `minBound` set by the `Bounded` instance.
+
+=== Deriving Typeclasses
+
+Many of the typeclasses you encounter in Haskell are fairly simple and have very routine
+implementations. For example, consider the following data structure and `Show` instance:
+
+[source]
+----
+data Something a = A | B | C | D | E a
+
+instance Show a => Show (Something a) where
+  show A = "A"
+  show B = "B"
+  show C = "C"
+  show D = "D"
+  show (E a) = "(E " ++ show a ++ ")"
+
+instance Eq a => Eq (Something a) where
+  A == A = True
+  B == B = True
+  C == C = True
+  D == D = True
+  (E x) == (E y) = x == y
+----
+
+Instances like the one above are filled with boilerplate code. They require a lot of typing,
+provide plenty of room for error, and are completely and thoroughly uninteresting. To avoid having
+to declare these boring instances for every data type you create, Haskell can auto-generate these
+instances if you ask it to using the `deriving` keyword. The following declaration demonstrates a
+use of the `deriving` keyword:
+
+[source]
+----
+data Something a = A | B| C | D | E a
+  deriving (Show, Eq) <1>
+----
+<1> If you only want to derive one typeclass, you don't need the parentheses or commas; for
+instance, if you didn't want `Something a` to be comparable using `==`, you could just write
+`deriving Show` instead of `deriving (Show, Eq)`.
+
+Haskell can automatically derive typeclass instances for many common typeclasses, such as `Eq`,
+`Ord`, `Bounded`, `Read`, `Enum`, and `Show`. (Some more complex typeclasses can also be derived, but
+sometimes it requires extra language extensions.) You should generally let Haskell derive all your
+simple typeclass instances for you, unless you need a behaviour that differs from the default. The
+default behaviours are usually pretty intuitive – for example, `Read` and `Show` parse and output
+their data structures just like you would in code, and `Enum` and `Bounded` use the order of
+constructors to order their values.
 
 == Numeric Typeclasses
 
